@@ -78,6 +78,14 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
     tmpl.visibility = num(root, "visibility", 1.0);
     tmpl.durationSeconds = num(root, "durationSeconds", 30.0);
 
+    // sensor 块可缺省：缺省即传感器默认参数，老场景文件不必改。
+    if (root.value(QStringLiteral("sensor")).isObject()) {
+        const QJsonObject s = root.value(QStringLiteral("sensor")).toObject();
+        tmpl.sensor.lidarRange = num(s, "lidarRange", tmpl.sensor.lidarRange);
+        tmpl.sensor.lidarPointsPerMeter =
+            num(s, "lidarPointsPerMeter", tmpl.sensor.lidarPointsPerMeter);
+    }
+
     const QJsonArray actors = root.value(QStringLiteral("actors")).toArray();
     tmpl.actors.reserve(static_cast<std::size_t>(actors.size()));
     for (const auto& item : actors) {
@@ -131,6 +139,11 @@ bool JsonScenarioRepository::save(const std::string& path,
     root.insert(QStringLiteral("friction"), tmpl.friction);
     root.insert(QStringLiteral("visibility"), tmpl.visibility);
     root.insert(QStringLiteral("durationSeconds"), tmpl.durationSeconds);
+
+    QJsonObject sensor;
+    sensor.insert(QStringLiteral("lidarRange"), tmpl.sensor.lidarRange);
+    sensor.insert(QStringLiteral("lidarPointsPerMeter"), tmpl.sensor.lidarPointsPerMeter);
+    root.insert(QStringLiteral("sensor"), sensor);
 
     QJsonArray actors;
     for (const auto& a : tmpl.actors) {

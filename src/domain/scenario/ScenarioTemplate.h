@@ -31,6 +31,16 @@ struct ParameterSpec {
     double step{0.1};
 };
 
+/// 点云传感器的采样参数。
+///
+/// 放进场景模板而不是写死在控制器里，是因为点云规模直接决定渲染、网络
+/// 与感知三处的开销：同一个场景换一种采样密度就是另一个量级的工作负载。
+/// 压测场景若不能自己声明"我这帧有多少点"，结论就无法复现。
+struct SensorSpec {
+    double lidarRange{50.0};           ///< m，有效量程
+    double lidarPointsPerMeter{1.5};   ///< 轮廓采样密度，点/米
+};
+
 /// 参数化场景模板。既是自然语言解析的输出，也是失效搜索的输入。
 struct ScenarioTemplate {
     std::string id;
@@ -41,6 +51,7 @@ struct ScenarioTemplate {
     double friction{0.9};       ///< 路面附着系数
     double visibility{1.0};     ///< 能见度系数，1 为晴好
     double durationSeconds{30.0};
+    SensorSpec sensor{};
     std::vector<ActorSpec> actors;
     std::vector<ParameterSpec> parameters;
 };

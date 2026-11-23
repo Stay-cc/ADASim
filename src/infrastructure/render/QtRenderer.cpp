@@ -176,13 +176,16 @@ void QtRenderer::rasterize(const domain::WorldSnapshot& snap, const domain::View
     // 这也是点云查看器的通行做法——观测值压在实体之上。
     //
     // 性能上这是关键路径。逐点 drawPoint 在十万点下约 60~90 ms，
-    // 而直接写像素在同一台机器上约 2~4 ms。
+    // 而直接写像素实测 0.42 ms（2×2 块，十万点，见《性能压测报告》）——
+    // 差两个数量级，根本原因是对每个点都调用了一次绘制状态机。
     //
     // 每个点写成 2×2 像素块而不是单像素：单像素点在 0.1 m/px 缩放下
     // 只占一个点，被抗锯齿车身描边一压就看不出来，视觉上"像没画"。
-    // 四倍写量在十万点下仍只增加约 1 ms，换来的是点云清晰可辨。
+    // 四倍写量在十万点下仍只增加约 0.2 ms，换来的是点云清晰可辨。
     const std::size_t n = snap.pointCount();
     if (n > 0) {
+        QElapsedTimer cloudTimer;
+        cloudTimer.start();
         const float* px = snap.px.data();
         const float* py = snap.py.data();
         const float* pi = snap.intensity.data();
@@ -206,6 +209,11 @@ void QtRenderer::rasterize(const domain::WorldSnapshot& snap, const domain::View
             line1[col] = c;
             line1[col + 1] = c;
         }
+        // 单独记点云段耗时：压测时要能分清"慢在点云"还是"慢在画车"，
+        // 否则优化方向全是猜的。
+        lastCloudMs_ = static_cast<double>(cloudTimer.nsecsElapsed()) / 1.0e6;
+    } else {
+        lastCloudMs_ = 0.0;
     }
 
     // ---- 4. 自车：最后画，保证压在点云与障碍物之上 ----

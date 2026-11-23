@@ -63,6 +63,14 @@ std::vector<std::string> ScenarioService::validate(const domain::ScenarioTemplat
     if (tmpl.durationSeconds <= 0.0) {
         issues.emplace_back("场景时长必须为正");
     }
+    // 传感器参数的上下界不是审美问题：密度过大会让一帧点云涨到百万级，
+    // 直接把渲染与网络压垮；为负则采样循环会退化成空点云。
+    if (tmpl.sensor.lidarRange <= 0.0 || tmpl.sensor.lidarRange > 500.0) {
+        issues.emplace_back("激光雷达量程应在 (0, 500] 米");
+    }
+    if (tmpl.sensor.lidarPointsPerMeter <= 0.0 || tmpl.sensor.lidarPointsPerMeter > 100.0) {
+        issues.emplace_back("点云采样密度应在 (0, 100] 点/米");
+    }
     if (tmpl.actors.empty()) {
         issues.emplace_back("场景至少需要一个交通参与者");
     }

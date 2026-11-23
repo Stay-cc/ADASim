@@ -228,6 +228,11 @@ void MainWindow::applyLoadedScenario(const QString& path) {
         return;
     }
 
+    domain::LidarParams lidar;
+    lidar.range = tmpl->sensor.lidarRange;
+    lidar.pointsPerMeter = tmpl->sensor.lidarPointsPerMeter;
+    sim_.setLidarParams(lidar);
+
     sim_.reset(scenarios_.buildInitialState(*tmpl));
     sim_.pause();
     timeline_->setRange(0, 0);

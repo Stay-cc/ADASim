@@ -53,6 +53,10 @@ public:
     [[nodiscard]] double fixedStep() const noexcept { return fixedStep_; }
     void setFixedStep(double dt);
 
+    /// 设定点云采样参数。由场景文件的 sensor 块给出，缺省即为 LidarParams 默认值。
+    void setLidarParams(const domain::LidarParams& params) { lidar_ = params; }
+    [[nodiscard]] const domain::LidarParams& lidarParams() const noexcept { return lidar_; }
+
     /// 断线兜底是否正在制动。仅在没有算法进程在线时可能为真，
     /// 界面拿它提示用户"接管缺失、底座在自救"，避免被误读成算法在刹车。
     [[nodiscard]] bool standbyGuardActive() const noexcept { return standbyGuard_.engaged(); }
@@ -78,7 +82,9 @@ private:
     double fixedStep_{0.02};
     double speedFactor_{1.0};
     double accumulator_{0.0};
+    double cloudAccum_{0.0};   ///< 点云发布节拍累加器，与物理步解耦
     double lastWall_{0.0};
+    bool snapshotDirty_{true};
     bool running_{false};
 };
 

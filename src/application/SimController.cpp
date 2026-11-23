@@ -22,6 +22,7 @@ void SimController::reset(const domain::WorldState& initial) {
     lastCommand_ = domain::ControlCommand{};
     standbyGuard_.reset();
     accumulator_ = 0.0;
+    cloudAccum_ = 0.0;
     lastWall_ = clock_.monotonicSeconds();
     running_ = false;
     snapshot_.reset();
@@ -98,6 +99,7 @@ void SimController::stepOnce() {
 
     current_ = physics_.step(current_, fixedStep_, lastCommand_);
     buffer_.append(current_);
+    snapshotDirty_ = true;
     publish();
 }
 
@@ -130,7 +132,7 @@ bool SimController::seek(domain::FrameId target) {
 
     // 回溯即回退写指针：继续仿真会覆盖该帧之后的历史
     buffer_.rewindTo(plan->targetFrame);
-    buildSnapshotCache();
+    snapshotDirty_ = true;
     return true;
 }
 
@@ -138,10 +140,14 @@ void SimController::buildSnapshotCache() {
     auto snap = std::make_shared<domain::WorldSnapshot>();
     domain::LidarModel::sample(current_, lidar_, *snap);
     snapshot_ = std::move(snap);
+    snapshotDirty_ = false;
 }
 
 std::shared_ptr<const domain::WorldSnapshot> SimController::snapshot() {
-    if (!snapshot_) {
+    // 懒重建：只有状态推进过才重新采样。渲染与点云发布各有自己的节拍，
+    // 两者都来取快照，若每步都无条件重采，十万点下等于每秒多做 40 次
+    // 无用功（0.47 ms × 50），纯属白烧 CPU。
+    if (!snapshot_ || snapshotDirty_) {
         buildSnapshotCache();
     }
     return snapshot_;
@@ -156,14 +162,27 @@ void SimController::publish() {
     sp.obstacles = current_.obstacles;
     transport_.publishState(sp);
 
-    buildSnapshotCache();
-    domain::PointCloudPacket cp;
-    cp.frameId = current_.frameId;
-    cp.simTime = current_.simTime;
-    cp.px = snapshot_->px;
-    cp.py = snapshot_->py;
-    cp.intensity = snapshot_->intensity;
-    transport_.publishCloud(cp);
+    // 点云按传感器频率发布，不跟着物理步走。
+    // 原因见 LidarParams::rateHz：十万点下每步发一次等于每秒 4.3 万个分片。
+    // 用累加器而不是"每 N 步一次"，是因为 50 Hz / 10 Hz = 5 只是恰好整除；
+    // 若物理步长或雷达频率改成不整除的组合，取模会固定丢掉半拍。
+    const double period = lidar_.rateHz > 0.0 ? 1.0 / lidar_.rateHz : 0.0;
+    cloudAccum_ += fixedStep_;
+    if (period > 0.0 && cloudAccum_ + 1e-9 >= period) {
+        cloudAccum_ -= period;
+        if (cloudAccum_ < 0.0) {
+            cloudAccum_ = 0.0;
+        }
+
+        const auto snap = snapshot();  // 脏则重建，不脏直接复用
+        domain::PointCloudPacket cp;
+        cp.frameId = current_.frameId;
+        cp.simTime = current_.simTime;
+        cp.px = snap->px;
+        cp.py = snap->py;
+        cp.intensity = snap->intensity;
+        transport_.publishCloud(cp);
+    }
 }
 
 }  // namespace adasim::app

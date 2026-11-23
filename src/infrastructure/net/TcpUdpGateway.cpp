@@ -182,7 +182,7 @@ void TcpUdpGateway::publishCloud(const domain::PointCloudPacket& packet) {
         return;
     }
 
-    const int perChunk = cfg_.cloudChunkPoints > 0 ? cfg_.cloudChunkPoints : 2000;
+    const int perChunk = cfg_.cloudChunkPoints > 0 ? cfg_.cloudChunkPoints : 120;
     const int chunkCount = (total + perChunk - 1) / perChunk;
     if (chunkCount > 65535) {
         // 点数过多时丢弃，而不是静默截断——截断会让感知算法看到半辆车。

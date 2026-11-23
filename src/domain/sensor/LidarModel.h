@@ -11,6 +11,10 @@ struct LidarParams {
     double range{50.0};        ///< 有效量程，m
     double pointsPerMeter{1.5};///< 轮廓采样密度
     float minIntensity{0.15f};
+    /// 点云发布频率，Hz。与物理步长解耦是必须的：物理按 50 Hz 推进，
+    /// 但雷达是 10 Hz 的传感器。早期两者同频，2 车 40 点时看不出问题，
+    /// 十万点时就是每秒 4.3 万个 UDP 分片（约 51 MB/s），链路直接被灌死。
+    double rateHz{10.0};
 };
 
 /// 简化的激光雷达模型：取障碍物包围矩形的轮廓点，按量程衰减强度。
