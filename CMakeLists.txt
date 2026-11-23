@@ -20,7 +20,7 @@ endif()
 # 构建选项
 # ---------------------------------------------------------------------------
 option(ADASIM_WITH_GUI "构建 Qt 渲染、通信与窗口，需要 Qt6" ON)
-option(ADASIM_BUILD_TESTS "构建单元测试（暂未启用）" OFF)
+option(ADASIM_BUILD_TESTS "构建回归测试（CTest）" ON)
 option(ADASIM_WARNINGS_AS_ERRORS "把编译告警视为错误" OFF)
 
 # Qt 缺失时自动降级：保证领域层与应用层始终可独立构建
@@ -46,6 +46,12 @@ endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/LayerGuard.cmake)
 
 add_subdirectory(src)
+
+# 测试放在 src 之后：用例链接 adasim_app / adasim_domain，也复用 adasim_headless
+if(ADASIM_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # ---------------------------------------------------------------------------
 # 构建摘要
