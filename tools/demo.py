@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import json
 import os
@@ -58,23 +59,45 @@ def find_base() -> Path | None:
 def check_qt_runtime(base: Path) -> str | None:
     """底座链接 Qt6，缺运行库时进程会在启动瞬间退出且没有可读报错。
 
-    与其让人对着"闪一下就没了"猜半天，不如在这里提前说清楚：
-    把 Qt 的 bin 目录加进 PATH 再跑。
+    与其让人对着"闪一下就没了"猜半天，不如在这里提前说清楚。
+    先尝试从 CMake 缓存里把 Qt 的 bin 与配套 MinGW 的 bin 补进 PATH——
+    构建时用的是哪套 Qt，运行时就得用哪套，缓存里记得一清二楚，没道理让人再手填一遍。
     """
     if os.name != "nt":
         return None
-    qt = os.environ.get("QTDIR") or os.environ.get("QT_ROOT")
-    bin_dir = Path(qt) / "bin" if qt else None
-    if bin_dir and (bin_dir / "Qt6Core.dll").exists():
+
+    def has_qt_bin() -> bool:
+        for p in os.environ.get("PATH", "").split(os.pathsep):
+            try:
+                if (Path(p) / "Qt6Core.dll").exists():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    if has_qt_bin():
         return None
-    # PATH 里已经有 Qt 也算就绪（最常见的情形）
-    for p in os.environ.get("PATH", "").split(os.pathsep):
-        try:
-            if (Path(p) / "Qt6Core.dll").exists():
-                return None
-        except OSError:
-            continue
-    return (f"没在 PATH 里找到 Qt6Core.dll。请先把 Qt 的 bin 目录加入 PATH，例如：\n"
+
+    # 从 build/qt 的缓存推 Qt 安装前缀：.../mingw_64/lib/cmake/Qt6 → .../mingw_64
+    cache = ROOT / "build" / "qt" / "CMakeCache.txt"
+    if cache.exists():
+        for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Qt6_DIR:PATH="):
+                qt6 = Path(line.split("=", 1)[1].strip())
+                prefix = qt6.parents[2] if len(qt6.parents) >= 3 else None
+                if prefix and (prefix / "bin" / "Qt6Core.dll").exists():
+                    extra = [prefix / "bin"]
+                    # 同一套 Qt 的 MinGW 工具链（libstdc++/libgcc/libwinpthread）
+                    tools = prefix.parent / "Tools"
+                    if tools.exists():
+                        extra += sorted(tools.glob("mingw*_64/bin"))
+                    os.environ["PATH"] = os.pathsep.join(
+                        [str(p) for p in extra] + [os.environ.get("PATH", "")])
+                    if has_qt_bin():
+                        return None
+                break
+
+    return (f"没在 PATH 里找到 Qt6Core.dll。请把 Qt 的 bin 目录加入 PATH，例如：\n"
             f"    export PATH=\"/path/to/Qt/6.x/mingw_64/bin:/path/to/Qt/Tools/mingw1310_64/bin:$PATH\"\n"
             f"底座路径: {base}")
 
@@ -175,7 +198,7 @@ def run_demo(args) -> int:
     algo = json.loads(algo_path.read_text(encoding="utf-8")) if algo_path.exists() else {}
 
     report = build_report(scenario, meta, series, algo, args, frames, cruise)
-    (out / "index.html").write_text(render_html(report), encoding="utf-8")
+    (out / "index.html").write_text(render_html(report, out), encoding="utf-8")
     (out / "report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -276,9 +299,21 @@ def print_summary(rep: dict, out: Path) -> None:
 # 页面
 # ---------------------------------------------------------------------------
 
-def render_html(rep: dict) -> str:
+def render_html(rep: dict, out: Path) -> str:
+    # 帧内联成 data URI。相对路径在本地预览里通常没问题，但这份页面是要
+    # 发给别人看的（导师、答辩评委），一个单独的 html 文件不会因为漏了
+    # frames 目录就变成一排裂图标。16 张 1080p 截图约 0.5 MB，代价可以接受。
+    frames_uri = []
+    for i in range(rep["帧数"]):
+        p = out / "frames" / f"frame_{i:02d}.png"
+        if p.exists():
+            frames_uri.append("data:image/png;base64,"
+                              + base64.b64encode(p.read_bytes()).decode("ascii"))
+        else:
+            frames_uri.append(f"frames/frame_{i:02d}.png")
+
     payload = {
-        "frames": [f"frames/frame_{i:02d}.png" for i in range(rep["帧数"])],
+        "frames": frames_uri,
         "interval": rep["帧间隔"],
         "series": [{"t": round(r["t"], 2), "v": round(r["v"], 2),
                     "gap": round(r["gap"], 2), "link": r.get("link", 1)}
