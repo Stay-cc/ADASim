@@ -83,10 +83,32 @@ python python/run.py --truth         # 跳过感知，直接用真值（对照�
 ```bash
 adasim scenarios/curve_tracking.json          # 指定场景启动
 adasim --shot out.png --shot-delay 8000       # 跑 8 秒截图退出，用于无人值守取图
+adasim --record out/frames --frames 16 --interval 700 \
+       --metrics out/timeseries.csv           # 连续录帧 + 100 ms 采样（Demo 用）
 ```
 
 算法进程汇总会给出：状态帧/指令帧数、平均点数、平均计算耗时、最小车距、
 最小 TTC、决策分布，以及横向/航向/速度误差 RMS（`--warmup` 之后开始统计）。
+
+### 3.1 一条命令跑通 Demo
+
+```bash
+python tools/demo.py
+```
+
+它会按固定时序跑完一整条链路：底座起来 → 算法进程接入闭环控制 → 算法进程退出 →
+底座兜底减速，同时连续录帧与采样，最后生成 `output/demo/index.html`：
+一个能拖动的播放器（帧序列）、车速与车距曲线（断链时刻有标记）、关键读数。
+
+```bash
+python tools/demo.py --scenario scenarios/curve_tracking.json   # 换成弯道
+python tools/demo.py --keep-online                              # 不断链，只看闭环
+python tools/demo.py --frames 20 --interval 500                 # 录得更密
+```
+
+时序固定是刻意的：手工演示要掐两次时刻（算法进程什么时候接入、什么时候退出），
+掐错一次看到的就是"算法没连上"或"断链发生在录完之后"，而这两种情况的画面都很正常，
+看不出问题。
 
 ## 4 场景
 

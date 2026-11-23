@@ -25,6 +25,9 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr QRgb kBackground = qRgb(18, 21, 26);
 constexpr QRgb kGrid = qRgb(34, 39, 46);
 constexpr QRgb kAxis = qRgb(52, 60, 70);
+constexpr QRgb kRoad = qRgb(26, 30, 36);
+constexpr QRgb kLaneDash = qRgb(74, 84, 96);
+constexpr QRgb kRoadEdge = qRgb(120, 132, 148);
 constexpr QRgb kEgoFill = qRgb(210, 72, 72);
 constexpr QRgb kEgoEdge = qRgb(255, 168, 168);
 constexpr QRgb kObstacleFill = qRgb(72, 104, 152);
@@ -138,6 +141,83 @@ void QtRenderer::rasterize(const domain::WorldSnapshot& snap, const domain::View
             if (row < 0 || row >= vp.heightPx) continue;
             painter.setPen(QColor(std::abs(gy) < 1e-6 ? kAxis : kGrid));
             painter.drawLine(0, row, vp.widthPx, row);
+        }
+    }
+
+    // ---- 1.5 路面与车道线 ----
+    // 顺序：网格 → 路面 → 车道线 → 车体 → 点云。路面要压在网格上，
+    // 否则网格线会横穿车道，看起来像车开在坐标纸上而不是路上。
+    //
+    // 车道纵向位置以"自车所在车道中心线 y = 0"为基准：
+    // 场景写的是 laneCount 与 laneWidth，没有横向偏移字段，
+    // 约定自车沿本车道中心行驶即可，参与者用 y 表示自己在哪条道。
+    {
+        QPainter painter(&canvas_);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+
+        const int lanes = std::max(1, snap.state.laneCount);
+        const double laneW = snap.state.laneWidth > 0.5 ? snap.state.laneWidth : 3.5;
+        const double halfRoad = lanes * laneW * 0.5;
+        const double kappa = snap.state.curvature;
+
+        // 一条车道线的世界坐标：直道就是 y = 常数；弯道按圆弧算。
+        // 圆心在 (0, 1/κ)，半径 R + d，边界点满足 x² + (y-R)² = (R+d)²，
+        // 取负根使 d = 0 时过原点——与算法侧 Stanley 用的参考路径同一套几何。
+        const auto boundaryY = [&](double wx, double d) {
+            if (std::abs(kappa) < 1e-9) return d;
+            const double radius = 1.0 / kappa;
+            const double rr = radius + d;
+            const double inner = rr * rr - wx * wx;
+            return radius - (inner > 0.0 ? std::sqrt(inner) : 0.0);
+        };
+
+        // 路面铺底
+        const double leftM = vp.centerX - halfW * mpp;
+        const double rightM = vp.centerX + halfW * mpp;
+        QPolygonF road;
+        const int samples = std::abs(kappa) < 1e-9 ? 1 : 24;
+        road.reserve(samples * 2 + 2);
+        for (int k = 0; k <= samples; ++k) {
+            const double wx = leftM + (rightM - leftM) * k / samples;
+            double px = 0.0, py = 0.0;
+            toPx(wx, boundaryY(wx, halfRoad), px, py);
+            road << QPointF(px, py);
+        }
+        for (int k = samples; k >= 0; --k) {
+            const double wx = leftM + (rightM - leftM) * k / samples;
+            double px = 0.0, py = 0.0;
+            toPx(wx, boundaryY(wx, -halfRoad), px, py);
+            road << QPointF(px, py);
+        }
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(QColor(kRoad));
+        painter.drawPolygon(road);
+
+        // 车道分界虚线：n 条车道有 n-1 条分界
+        painter.setPen(QPen(QColor(kLaneDash), 1.0, Qt::DashLine));
+        for (int k = 1; k < lanes; ++k) {
+            const double d = -halfRoad + k * laneW;
+            QPolygonF line;
+            for (int j = 0; j <= samples; ++j) {
+                const double wx = leftM + (rightM - leftM) * j / samples;
+                double px = 0.0, py = 0.0;
+                toPx(wx, boundaryY(wx, d), px, py);
+                line << QPointF(px, py);
+            }
+            painter.drawPolyline(line);
+        }
+
+        // 路缘实线
+        painter.setPen(QPen(QColor(kRoadEdge), 2.0));
+        for (double d : {-halfRoad, halfRoad}) {
+            QPolygonF line;
+            for (int j = 0; j <= samples; ++j) {
+                const double wx = leftM + (rightM - leftM) * j / samples;
+                double px = 0.0, py = 0.0;
+                toPx(wx, boundaryY(wx, d), px, py);
+                line << QPointF(px, py);
+            }
+            painter.drawPolyline(line);
         }
     }
 

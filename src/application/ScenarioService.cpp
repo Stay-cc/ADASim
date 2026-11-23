@@ -187,6 +187,9 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     // 曲率同样随状态下发：算法侧要据此生成弯道参考路径，
     // 只存在模板里的话，仿真跑起来就只剩一条直道。
     state.curvature = tmpl.curvature;
+    // 车道几何跟着状态走，渲染层才能画出路面。
+    state.laneCount = tmpl.laneCount;
+    state.laneWidth = tmpl.laneWidth;
 
     std::uint32_t id = 1;
     for (const auto& actor : tmpl.actors) {

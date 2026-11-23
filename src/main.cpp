@@ -7,11 +7,14 @@
 #include <QTimer>
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
+#include <functional>
 #include <string>
 
 #include "application/ExperimentRunner.h"
 #include "application/ScenarioService.h"
 #include "application/SimController.h"
+#include "domain/model/ForwardGap.h"
 #include "domain/simulation/PhysicsEngine.h"
 #include "domain/timeline/TimelineBuffer.h"
 #include "infrastructure/log/ConsoleLogger.h"
@@ -77,13 +80,23 @@ int main(int argc, char** argv) {
     //   adasim [场景文件]                正常启动
     //   adasim --shot <图片路径> [场景]   自动跑 2.5 s 后截图退出
     //   --shot-delay <毫秒>              调整截图前的运行时长
+    //   adasim --record <目录> [场景]     自动跑一段并连续截图，用于录 Demo
+    //   --frames <张> / --interval <毫秒> 控制录制的张数与间隔
     // 截图模式不是为了测试方便才加的：论文与答辩需要的界面配图
     // 必须可重复生成，手按截图键得到的图每次都不一样。
     // 延时之所以可配，是因为"算法进程在线"这类联调状态需要跑够时间
     // 才能出现，固定 2.5 s 会在客户端还没连上时就截图。
+    //
+    // --record 是在 --shot 之上加的一条"连续帧"通路：单张截图说明不了任何
+    // 动态过程，而 Demo 要展示的恰恰是过程（车在动、前车在刹、断链后自车
+    // 自己减速停车）。一次运行里连续取帧，才能保证这些帧属于同一次仿真。
     QString scenarioPath;
     QString shotPath;
     int shotDelayMs = 2500;
+    QString recordDir;
+    int recordFrames = 8;
+    int recordIntervalMs = 1000;
+    QString metricsPath;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -92,6 +105,14 @@ int main(int argc, char** argv) {
             shotPath = args.at(++i);
         } else if (a == QLatin1String("--shot-delay") && i + 1 < args.size()) {
             shotDelayMs = std::max(200, args.at(++i).toInt());
+        } else if (a == QLatin1String("--record") && i + 1 < args.size()) {
+            recordDir = args.at(++i);
+        } else if (a == QLatin1String("--frames") && i + 1 < args.size()) {
+            recordFrames = std::max(1, args.at(++i).toInt());
+        } else if (a == QLatin1String("--interval") && i + 1 < args.size()) {
+            recordIntervalMs = std::max(100, args.at(++i).toInt());
+        } else if (a == QLatin1String("--metrics") && i + 1 < args.size()) {
+            metricsPath = args.at(++i);
         } else if (!a.startsWith(QLatin1String("--"))) {
             scenarioPath = a;
         }
@@ -119,6 +140,74 @@ int main(int argc, char** argv) {
                          shotPath.toLocal8Bit().constData());
             QCoreApplication::quit();
         });
+    }
+
+    // 录制伴随的时序采样：截图只说明"那一刻长什么样"，车在加速还是已经刹停、
+    // 断链发生在第几秒，得靠数值。采样独立于抓图节拍（固定 100 ms），
+    // 否则 8 张图只能给出 8 个点的曲线。
+    std::ofstream metrics;
+    if (!metricsPath.isEmpty()) {
+        // 与 --record 同目录时，录制目录可能还没建，这里先补上。
+        QDir().mkpath(QFileInfo(metricsPath).absolutePath());
+        metrics.open(metricsPath.toStdString(), std::ios::out | std::ios::trunc);
+        if (!metrics) {
+            std::fprintf(stderr, "无法写入时序文件: %s\n",
+                         metricsPath.toLocal8Bit().constData());
+        } else {
+            metrics << "t,x,speed,gap,standby,link,frame\n";
+            auto* sampler = new QTimer(&qtApp);
+            QObject::connect(sampler, &QTimer::timeout, &window,
+                             [&sim, &gateway, &metrics]() {
+                const adasim::domain::WorldState& s = sim.current();
+                const adasim::domain::ForwardGap gap =
+                    adasim::domain::nearestForwardTarget(s);
+                // link 与 standby 是两回事：link 表示"算法进程在不在"，
+                // standby 表示"这一帧兜底律是否正在制动"。车距还有余量时
+                // 断链也不会制动，两者混用会把"离线但没刹"读成"在线"。
+                metrics << s.simTime << ',' << s.ego.x << ',' << s.egoSpeed << ','
+                        << (gap.valid ? gap.bumperGap : -1.0) << ','
+                        << (sim.standbyGuardActive() ? 1 : 0) << ','
+                        << (gateway.linkAlive() ? 1 : 0) << ',' << s.frameId
+                        << '\n';
+            });
+            sampler->start(100);
+        }
+    }
+
+    if (!recordDir.isEmpty()) {
+        // 目录不存在就建：调用方（tools/demo.py）只负责传路径，不该先 mkdir。
+        if (!QDir().mkpath(recordDir)) {
+            std::fprintf(stderr, "无法创建录制目录: %s\n",
+                         recordDir.toLocal8Bit().constData());
+            return 2;
+        }
+
+        sim.start();
+
+        // 用自递归的 singleShot 而不是周期 timer：抓图本身要几十毫秒，
+        // 周期 timer 会在慢帧上排队，越跑越偏，最后两张时间戳挨在一起。
+        //
+        // capture 存成 static 而不是 shared_ptr 自引用：自引用会形成环，
+        // 而"执行中的 std::function 销毁自己"是未定义行为，不能靠置空来破环。
+        static int shotIndex = 0;
+        static std::function<void()> capture;
+        capture = [&window, recordDir, recordFrames, recordIntervalMs]() {
+            QCoreApplication::processEvents();
+            const QString path =
+                QDir(recordDir).filePath(QStringLiteral("frame_%1.png")
+                                             .arg(shotIndex, 2, 10, QLatin1Char('0')));
+            const bool ok = window.grab().save(path, "PNG");
+            std::fprintf(ok ? stdout : stderr, "%s: %s\n",
+                         ok ? "已保存帧" : "帧保存失败",
+                         path.toLocal8Bit().constData());
+            std::fflush(stdout);
+            if (++shotIndex >= recordFrames) {
+                QCoreApplication::quit();
+                return;
+            }
+            QTimer::singleShot(recordIntervalMs, capture);
+        };
+        QTimer::singleShot(recordIntervalMs, capture);
     }
 
     return qtApp.exec();

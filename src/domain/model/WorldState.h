@@ -46,6 +46,11 @@ struct WorldState {
     /// 与 friction 同理，它是"这一帧的道路属性"，必须随快照一起回退，
     /// 否则回溯到直道段时算法侧仍按弯道生成参考路径。
     double curvature{0.0};
+    /// 车道数与车道宽，与 friction 同类：都是"这一帧的路"。
+    /// 渲染层靠它画出车道线，否则画面上只有一层网格和三块矩形，
+    /// 看不出车跑在路上、也看不出切入是从哪条道切过来的。
+    int laneCount{2};
+    double laneWidth{3.5};
     std::vector<EntityState> obstacles;
 };
 
