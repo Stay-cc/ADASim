@@ -62,6 +62,10 @@ struct ScenarioTemplate {
     /// egoSpeed 是否由文件显式给出。未给出时回退到旧的 parameters 约定，
     /// 保证既有场景文件的语义不变。
     bool egoSpeedExplicit{false};
+    /// 自车初始位姿，缺省为原点朝 +x。留出这个字段是为了能考"横向偏差
+    /// 收敛"：自车若永远从参考线正中起步，直道场景的横向误差恒为 0，
+    /// 那个指标就没有任何区分度，测出来的是"没有扰动"而不是"跟踪得好"。
+    Pose egoPose{};
     SensorSpec sensor{};
     std::vector<ActorSpec> actors;
     std::vector<ParameterSpec> parameters;

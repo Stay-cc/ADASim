@@ -1,0 +1,32 @@
+{
+  "id": "low_friction_rain",
+  "name": "雨雾低附着：前车制动",
+  "laneCount": 2,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.35,
+  "visibility": 0.55,
+  "durationSeconds": 20.0,
+  "egoSpeed": 14.0,
+  "sensor": {
+    "lidarRange": 70.0,
+    "lidarPointsPerMeter": 1.5
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 30.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 14.0,
+      "behavior": "brake",
+      "trigger": 3.5,
+      "brakeAccel": 7.0,
+      "speedFloor": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "friction", "min": 0.2, "max": 0.6, "step": 0.05 },
+    { "name": "ego_speed", "min": 10.0, "max": 16.0, "step": 0.5 }
+  ]
+}

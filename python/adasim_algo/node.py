@@ -35,11 +35,16 @@ class AlgoNode:
 
     def __init__(self, host: str = "127.0.0.1", tcp_port: int = 45100,
                  udp_port: int = 45101, use_truth: bool = False,
-                 verbose: bool = True, planning_cfg: PlanningConfig | None = None):
+                 verbose: bool = True, planning_cfg: PlanningConfig | None = None,
+                 warmup_seconds: float = 3.0):
         self.host = host
         self.tcp_port = tcp_port
         self.udp_port = udp_port
         self.use_truth = use_truth
+        # 稳态误差统计的起始时刻。底座先于算法进程启动，接管前那一段
+        # 自车是"无人驾驶"直行的，把这部分算进横向误差，量到的是接管
+        # 延迟而不是跟踪质量——实验里必须把两者分开报。
+        self.warmup_seconds = warmup_seconds
         self.verbose = verbose
 
         self.perception = Perception()
@@ -67,6 +72,19 @@ class AlgoNode:
         self.reasons: dict[str, int] = {}
         self.last_plan = None
         self.last_track_count = 0
+
+        # 闭环精度：按帧累加平方和，最后开方得 RMS。不存逐帧样本，
+        # 30 s × 50 Hz = 1500 个点虽然不多，但没有保留的必要——
+        # 实验要的是 RMS 与峰值，不是波形。
+        self.lat_sq_total = 0.0
+        self.lat_peak = 0.0
+        self.heading_sq_total = 0.0
+        self.speed_sq_total = 0.0
+        self.error_frames = 0
+
+        # 通信时延：seq → 发出时刻。只保留最近 256 条，避免长跑时无界增长。
+        self._send_times: dict[int, float] = {}
+        self.rtt_ms: list[float] = []
 
         # 异常诊断：只在首次出现时各打印一条，避免刷屏。
         # 这两类异常（速度尖峰、零车距）是感知链路最典型的失效表现，
@@ -235,9 +253,25 @@ class AlgoNode:
                 self._cloud_age = state.frame - self._latest_cloud.frame
 
         dt = 0.02
-        plan = self.planner.plan(state.ego, tracks, dt)
+        plan = self.planner.plan(state.ego, tracks, dt, state.curvature)
         self.last_plan = plan
         self.last_track_count = len(tracks)
+
+        # 闭环精度取真值位姿与参考路径的偏差：控制器输出的转角是手段，
+        # 车实际偏离参考线多少才是要考核的结果。统计只从 warmup 之后开始。
+        if state.sim_time >= self.warmup_seconds:
+            self.lat_sq_total += plan.lat_error * plan.lat_error
+            self.lat_peak = max(self.lat_peak, plan.lat_error)
+            self.heading_sq_total += plan.heading_error * plan.heading_error
+            speed_error = state.ego.speed - plan.target_speed
+            self.speed_sq_total += speed_error * speed_error
+            self.error_frames += 1
+
+        # 时延：状态帧里回带的 ackSeq 对应的就是"底座已消费的最早一条指令"。
+        if state.ack_seq >= 0:
+            sent = self._send_times.pop(state.ack_seq, None)
+            if sent is not None:
+                self.rtt_ms.append((time.perf_counter() - sent) * 1000.0)
 
         # 单帧耗时覆盖"感知 + 决策"整段：begin 打在感知之前，
         # 因此这里的差值已经包含感知，不能再叠加一次感知耗时。
@@ -271,6 +305,11 @@ class AlgoNode:
         self.max_accel = max(self.max_accel, abs(plan.accel))
 
         self._seq = (self._seq + 1) & 0x7FFFFFFF
+        self._send_times[self._seq] = time.perf_counter()
+        if len(self._send_times) > 256:
+            # 底座没回带的旧序号不会再被匹配，直接丢最旧的。
+            for old in list(self._send_times)[:64]:
+                self._send_times.pop(old, None)
         self._outbuf += encode_command(
             self._seq, state.frame, state.sim_time,
             plan.steer, plan.target_speed, plan.accel,
@@ -313,6 +352,21 @@ class AlgoNode:
 
     def summary(self) -> dict:
         elapsed = max(1e-6, time.monotonic() - self._connected_at)
+        frames = self.error_frames
+        n = max(1, frames)
+        rtts = sorted(self.rtt_ms)
+        if rtts:
+            rtt_mean = sum(rtts) / len(rtts)
+            rtt_std = math.sqrt(sum((x - rtt_mean) ** 2 for x in rtts) / len(rtts))
+            rtt_p99 = rtts[min(len(rtts) - 1, int(0.99 * (len(rtts) - 1)))]
+        else:
+            rtt_mean = rtt_std = rtt_p99 = float("nan")
+        # 往返时延里必然含一个状态帧周期：指令在下一帧状态才可能被回带。
+        # 扣掉它才是"链路 + 底座处理"的净时延，两者分开报，避免把
+        # 采样周期算进通信开销里自欺欺人。
+        rate = self.frames / elapsed if elapsed > 0.0 else 0.0
+        period_ms = 1000.0 / rate if rate > 0.0 else 0.0
+
         return {
             "运行时长": elapsed,
             "状态帧": self.frames,
@@ -320,13 +374,24 @@ class AlgoNode:
             "点云帧": self.cloud_frames,
             "平均点数": (self.cloud_points / self.cloud_frames) if self.cloud_frames else 0.0,
             "平均计算": (self.compute_ms_total / self.frames) if self.frames else 0.0,
-            "最小车距": self.min_gap,
-            "最小TTC": self.min_ttc,
+            "最小车距": None if math.isinf(self.min_gap) else self.min_gap,
+            "最小TTC": None if math.isinf(self.min_ttc) else self.min_ttc,
             "最大加速度": self.max_accel,
             "决策分布": dict(self.reasons),
             "失步次数": self._decoder.resyncs,
             "丢片帧": self._clouds.dropped,
             "坏包": self._clouds.corrupt,
+            "横向误差RMS": math.sqrt(self.lat_sq_total / n) if frames else None,
+            "横向误差峰值": self.lat_peak if frames else None,
+            "航向误差RMS": math.sqrt(self.heading_sq_total / n) if frames else None,
+            "速度误差RMS": math.sqrt(self.speed_sq_total / n) if frames else None,
+            "统计帧": frames,
+            "时延样本": len(rtts),
+            "往返时延均值": rtt_mean,
+            "往返时延标准差": rtt_std,
+            "往返时延P99": rtt_p99,
+            "名义帧周期": period_ms,
+            "净时延均值": rtt_mean - period_ms if rtts else float("nan"),
         }
 
     def close(self) -> None:

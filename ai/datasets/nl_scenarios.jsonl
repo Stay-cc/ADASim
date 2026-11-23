@@ -1,0 +1,54 @@
+{"id": "follow_01", "category": "跟车", "text": "前车在 25 米外以 6 m/s 匀速行驶，自车 10 m/s 跟在后面"}
+{"id": "follow_02", "category": "跟车", "text": "直道两车道，前车 30 米，车速 8 m/s，自车巡航 12 m/s"}
+{"id": "follow_03", "category": "跟车", "text": "跟车工况：前车 18 米，5 m/s，自车 9 m/s"}
+{"id": "follow_04", "category": "跟车", "text": "自车 15 m/s 接近前方 40 米处一辆 10 m/s 的慢车"}
+{"id": "follow_05", "category": "跟车", "text": "高速直道，前车 50 米匀速 20 m/s，自车 22 m/s"}
+{"id": "follow_06", "category": "跟车", "text": "拥堵跟车，前车只有 12 米，速度 3 m/s，自车 6 m/s"}
+{"id": "follow_07", "category": "跟车", "text": "三车道直道，自车 11 m/s，正前方 35 米有一辆 7 m/s 的车"}
+{"id": "follow_08", "category": "跟车", "text": "前车 22 米，车速 9 m/s，自车 13 m/s，跑 30 秒"}
+{"id": "follow_09", "category": "跟车", "text": "城市道路跟驰，前车 15 米，4 m/s，自车 8 m/s"}
+{"id": "follow_10", "category": "跟车", "text": "低速跟车，前车 10 米，2 m/s，自车 5 m/s"}
+
+{"id": "cutin_01", "category": "切入", "text": "第 3 秒左侧车道一辆 12 m/s 的车切入本车道"}
+{"id": "cutin_02", "category": "切入", "text": "旁车在第 2.5 秒从右道切进来，切入后减速到 6 m/s"}
+{"id": "cutin_03", "category": "切入", "text": "邻道车突然切入并急刹，自车 11 m/s"}
+{"id": "cutin_04", "category": "切入", "text": "自车 10 m/s 巡航，第 4 秒一辆 13 m/s 的车从左侧切入"}
+{"id": "cutin_05", "category": "切入", "text": "右侧车辆在 5 秒时并入本车道，速度 9 m/s"}
+{"id": "cutin_06", "category": "切入", "text": "前车 30 米，第 3 秒有车从邻道切入到两车之间"}
+{"id": "cutin_07", "category": "切入", "text": "切入工况：邻道车 15 m/s，第 2 秒切入，用 3 秒完成换道"}
+{"id": "cutin_08", "category": "切入", "text": "自车 12 m/s，左侧车在 1.5 秒时切入并制动到 4 m/s"}
+{"id": "cutin_09", "category": "切入", "text": "城市快速路，旁车切入后减速，自车需要制动避让"}
+{"id": "cutin_10", "category": "切入", "text": "第 6 秒邻道一辆卡车切入本车道，车速 8 m/s"}
+
+{"id": "cross_01", "category": "路口冲突", "text": "十字路口，右侧车辆抢行横穿，自车 9 m/s 直行"}
+{"id": "cross_02", "category": "路口冲突", "text": "无信号灯路口，对向车左转与自车路径冲突"}
+{"id": "cross_03", "category": "路口冲突", "text": "自车直行通过路口，一辆车从支路驶出"}
+{"id": "cross_04", "category": "路口冲突", "text": "路口右转，行人正在横穿斑马线"}
+{"id": "cross_05", "category": "路口冲突", "text": "四车道交叉口，左转待转车辆挡住自车车道"}
+{"id": "cross_06", "category": "路口冲突", "text": "自车 8 m/s 接近路口，横向来车 10 m/s 通过"}
+{"id": "cross_07", "category": "路口冲突", "text": "丁字路口，支路车辆汇入主路，自车需要减速"}
+{"id": "cross_08", "category": "路口冲突", "text": "环岛入口，内侧车辆切出与自车冲突"}
+{"id": "cross_09", "category": "路口冲突", "text": "路口内前车突然停车等待左转，自车跟在其后"}
+{"id": "cross_10", "category": "路口冲突", "text": "施工路口只剩一条车道，对向车与自车交替通行"}
+
+{"id": "work_01", "category": "施工绕行", "text": "前方 60 米施工，本车道封闭，需要向左侧绕行"}
+{"id": "work_02", "category": "施工绕行", "text": "道路施工，锥桶占据右侧车道，自车 10 m/s"}
+{"id": "work_03", "category": "施工绕行", "text": "前方事故车辆停在车道内，自车需要变道避让"}
+{"id": "work_04", "category": "施工绕行", "text": "施工区限速 30，前车减速通过，自车跟随"}
+{"id": "work_05", "category": "施工绕行", "text": "本车道 70 米处有静止故障车，自车 13 m/s"}
+{"id": "work_06", "category": "施工绕行", "text": "临时围挡占用左侧车道，车流向右并线"}
+{"id": "work_07", "category": "施工绕行", "text": "前方道路养护，只有一条车道可通行"}
+{"id": "work_08", "category": "施工绕行", "text": "高速施工区，前方车辆排队减速，自车 15 m/s"}
+{"id": "work_09", "category": "施工绕行", "text": "路边施工机械侵入车道，自车需要横向避让"}
+{"id": "work_10", "category": "施工绕行", "text": "隧道口施工，车道收窄，自车 12 m/s 通过"}
+
+{"id": "rain_01", "category": "雨雾退化", "text": "雨天路面湿滑，附着系数 0.4，前车 25 米急刹"}
+{"id": "rain_02", "category": "雨雾退化", "text": "大雾能见度 50 米，自车 10 m/s 跟车"}
+{"id": "rain_03", "category": "雨雾退化", "text": "湿滑路面，自车 14 m/s，前车突然制动"}
+{"id": "rain_04", "category": "雨雾退化", "text": "暴雨，能见度很低，前车 30 米，车速 8 m/s"}
+{"id": "rain_05", "category": "雨雾退化", "text": "冰雪路面附着 0.25，自车 8 m/s 低速行驶"}
+{"id": "rain_06", "category": "雨雾退化", "text": "雾天跟车，前车 35 米，自车 12 m/s，能见度 80 米"}
+{"id": "rain_07", "category": "雨雾退化", "text": "湿滑路面紧急制动，自车 16 m/s，前车 20 米"}
+{"id": "rain_08", "category": "雨雾退化", "text": "小雨，路面附着 0.6，邻道车切入"}
+{"id": "rain_09", "category": "雨雾退化", "text": "团雾路段，能见度骤降，前车减速到 5 m/s"}
+{"id": "rain_10", "category": "雨雾退化", "text": "雨夜低附着路面，自车 11 m/s 跟驰前车 9 m/s"}

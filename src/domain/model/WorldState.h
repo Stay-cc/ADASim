@@ -42,6 +42,10 @@ struct WorldState {
     /// 一是它对所有人（自车制动、参与者制动）都是同一个量，该由状态携带；
     /// 二是回溯重推演时它必须跟着帧一起回退，成员变量做不到这一点。
     double friction{0.9};
+    /// 道路中心线曲率，1/m，正值表示左弯（圆心在 +y 侧）。
+    /// 与 friction 同理，它是"这一帧的道路属性"，必须随快照一起回退，
+    /// 否则回溯到直道段时算法侧仍按弯道生成参考路径。
+    double curvature{0.0};
     std::vector<EntityState> obstacles;
 };
 

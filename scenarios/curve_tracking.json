@@ -1,0 +1,30 @@
+{
+  "id": "curve_tracking",
+  "name": "弯道跟踪",
+  "laneCount": 3,
+  "laneWidth": 3.5,
+  "curvature": 0.0033,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 20.0,
+  "egoSpeed": 12.0,
+  "sensor": {
+    "lidarRange": 60.0,
+    "lidarPointsPerMeter": 2.0
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 18.0,
+      "y": 4.04,
+      "theta": 0.0594,
+      "speed": 0.0,
+      "behavior": "constant",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "ego_speed", "min": 8.0, "max": 16.0, "step": 0.5 },
+    { "name": "perception_noise", "min": 0.0, "max": 1.0, "step": 0.1 }
+  ]
+}

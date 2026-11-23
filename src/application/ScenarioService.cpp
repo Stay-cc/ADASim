@@ -166,7 +166,7 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     domain::WorldState state;
     state.frameId = 0;
     state.simTime = 0.0;
-    state.ego = domain::Pose{0.0, 0.0, 0.0};
+    state.ego = tmpl.egoPose;
 
     double egoSpeed = tmpl.egoSpeed;
     if (!tmpl.egoSpeedExplicit) {
@@ -184,6 +184,9 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     // 附着系数随初始状态下发。此前它只存在于模板里、物理层根本没读，
     // 于是"路面湿滑"这个搜索变量无论怎么变，仿真结果都一模一样。
     state.friction = tmpl.friction;
+    // 曲率同样随状态下发：算法侧要据此生成弯道参考路径，
+    // 只存在模板里的话，仿真跑起来就只剩一条直道。
+    state.curvature = tmpl.curvature;
 
     std::uint32_t id = 1;
     for (const auto& actor : tmpl.actors) {

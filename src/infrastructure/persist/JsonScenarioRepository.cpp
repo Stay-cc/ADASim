@@ -82,6 +82,14 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
     tmpl.egoSpeedExplicit = root.value(QStringLiteral("egoSpeed")).isDouble();
     tmpl.egoSpeed = num(root, "egoSpeed", tmpl.egoSpeed);
 
+    // 自车初始位姿可缺省。缺省为原点朝 +x，与早期场景文件语义一致。
+    if (root.value(QStringLiteral("egoPose")).isObject()) {
+        const QJsonObject e = root.value(QStringLiteral("egoPose")).toObject();
+        tmpl.egoPose.x = num(e, "x", 0.0);
+        tmpl.egoPose.y = num(e, "y", 0.0);
+        tmpl.egoPose.theta = num(e, "theta", 0.0);
+    }
+
     // sensor 块可缺省：缺省即传感器默认参数，老场景文件不必改。
     if (root.value(QStringLiteral("sensor")).isObject()) {
         const QJsonObject s = root.value(QStringLiteral("sensor")).toObject();
@@ -148,6 +156,11 @@ bool JsonScenarioRepository::save(const std::string& path,
     root.insert(QStringLiteral("laneCount"), tmpl.laneCount);
     root.insert(QStringLiteral("laneWidth"), tmpl.laneWidth);
     root.insert(QStringLiteral("curvature"), tmpl.curvature);
+    QJsonObject egoPose;
+    egoPose.insert(QStringLiteral("x"), tmpl.egoPose.x);
+    egoPose.insert(QStringLiteral("y"), tmpl.egoPose.y);
+    egoPose.insert(QStringLiteral("theta"), tmpl.egoPose.theta);
+    root.insert(QStringLiteral("egoPose"), egoPose);
     root.insert(QStringLiteral("friction"), tmpl.friction);
     root.insert(QStringLiteral("visibility"), tmpl.visibility);
     root.insert(QStringLiteral("durationSeconds"), tmpl.durationSeconds);

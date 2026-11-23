@@ -37,6 +37,7 @@ class PlanningConfig:
     steer_gain: float = 1.6         # Stanley 增益
     max_steer: float = 0.6          # 与 VehicleParams::maxSteer 一致
     steer_tau: float = 0.12         # 转向执行器一阶时间常数，s
+    wheel_base: float = 2.7         # 轴距，m；弯道前馈转角 δ = atan(L·κ)
 
 
 @dataclass(slots=True)
@@ -48,6 +49,11 @@ class Plan:
     gap: float
     ttc: float
     reason: str
+    # 本帧的参考路径偏差，供实验章节统计横向/航向误差 RMS。
+    # 放在 Plan 里而不是另开一条测量通道：它就是控制器本帧看到的量，
+    # 事后另算一遍反而可能和控制器用的口径不一致。
+    lat_error: float = 0.0
+    heading_error: float = 0.0
 
 
 def predict_position(track: Track, horizon: float) -> tuple[float, float]:
@@ -71,7 +77,8 @@ class Planner:
     def reset(self) -> None:
         self._steer = 0.0
 
-    def plan(self, ego, tracks: list[Track], dt: float) -> Plan:
+    def plan(self, ego, tracks: list[Track], dt: float,
+             curvature: float = 0.0) -> Plan:
         cfg = self.cfg
 
         lead, gap, lead_speed = select_lead(ego, tracks, cfg)
@@ -80,9 +87,14 @@ class Planner:
             accel = _speed_control(ego.speed, cfg.cruise_speed, cfg)
             reason = "cruise"
             ttc = math.inf
+            target_speed = cfg.cruise_speed
         else:
             accel = idm_accel(ego.speed, cfg.cruise_speed, gap, lead_speed, cfg)
             reason = "follow"
+            # 跟驰稳态就是前车速度：目标车速取 min(巡航, 前车)，速度误差
+            # 才有明确的参考量。若一律用巡航车速，跟一辆 4 m/s 的慢车时
+            # 会持续显示 7 m/s 的"误差"，那是工况而不是跟踪质量。
+            target_speed = min(cfg.cruise_speed, max(0.0, lead_speed))
             ttc = gap / (ego.speed - lead_speed) if ego.speed > lead_speed + 0.05 else math.inf
             if gap < 1.0:
                 # 已经贴上了：IDM 的二次项会给出巨大的负值，这里单独限幅，
@@ -91,38 +103,67 @@ class Planner:
                 reason = "emergency"
 
         accel = max(-cfg.decel_max, min(cfg.accel_max, accel))
-        steer = self._track_path(ego, dt)
+        steer, cross_track, heading_error = self._track_path(ego, dt, curvature)
 
         return Plan(
             accel=accel,
             steer=steer,
-            target_speed=cfg.cruise_speed,
+            target_speed=target_speed,
             lead_id=lead.id if lead is not None else None,
             gap=gap,
             ttc=ttc,
             reason=reason,
+            lat_error=cross_track,
+            heading_error=heading_error,
         )
 
-    def _track_path(self, ego, dt: float) -> float:
-        """Stanley 横向控制，参考路径取车道中心线 y = 0。
+    def _track_path(self, ego, dt: float,
+                    curvature: float = 0.0) -> tuple[float, float, float]:
+        """Stanley 横向控制，参考路径由曲率决定。
 
-        参考路径之所以写死为 y = 0，是因为现有的两个场景模板都是沿 +x 的
-        直道，ego 初始位置在原点。接入地图后这里换成"最近路径点 + 切线"，
-        接口不变。
+        直道（|κ| < 1e-9）参考路径为 y = 0；弯道按圆弧处理，圆心在
+        (0, R)，R = 1/κ。用圆弧而不是抛物线近似，是因为抛物线只在
+        x << R 时贴合：R = 300 m、跑出 240 m 时抛物线给出的横向偏移
+        已比真实圆弧大 4%，这点偏差会被算进横向误差里，成了"控制器
+        没跟好"的假象。
+
+        自车与参考圆的偏差直接由"到圆心的距离"给出，不需要最近点搜索：
+        圆是全局可解析的，最坏情况（自车被甩到圆心另一侧）也只需要
+        atan2，而折线最近点搜索在曲率突变处容易跳点。
         """
         cfg = self.cfg
-        cross_track = -ego.y                 # 横向偏差，正值表示偏右
-        heading_error = -ego.theta           # 目标航向为 0
+        if abs(curvature) < 1e-9:
+            cross_track = -ego.y                 # 横向偏差，正值表示偏右
+            heading_error = -ego.theta           # 目标航向为 0
+        else:
+            radius = 1.0 / curvature             # 有符号：正为左弯
+            dx = ego.x - 0.0
+            dy = ego.y - radius
+            dist = math.hypot(dx, dy)
+            # 偏差量取"相对目标半径的外扩量"，再按弯向换算成 Stanley 的
+            # "正值偏右"口径。这里不能写 copysign(dist - |R|, κ)：copysign
+            # 只取第二个参数的符号，结果与偏差大小无关，内外侧会被判反——
+            # 表现为自车越偏越往外打方向，几十米后就甩出路面。
+            cross_track = math.copysign(1.0, curvature) * (dist - abs(radius))
+            tangent = math.atan2(dy, dx) + math.copysign(0.5 * math.pi, curvature)
+            heading_error = math.atan2(math.sin(tangent - ego.theta),
+                                       math.cos(tangent - ego.theta))
 
         # 低速时 atan(k*e/v) 会发散，分母加下限是 Stanley 的常规做法。
         speed = max(ego.speed, 2.0)
         desired = heading_error + math.atan(cfg.steer_gain * cross_track / speed)
+        # 曲率前馈：稳态在弯道上需要的转角是 atan(L·κ)，不给这一项，
+        # 纯反馈必须靠"持续偏离参考线"攒出误差才有转角，稳态偏差降不下来。
+        desired += math.atan(cfg.wheel_base * curvature)
         desired = max(-cfg.max_steer, min(cfg.max_steer, desired))
 
         # 一阶滞后：等价于转向电机的时间常数，dt 越小时越接近连续形式。
         alpha = 1.0 - math.exp(-dt / cfg.steer_tau) if cfg.steer_tau > 0.0 else 1.0
         self._steer += (desired - self._steer) * alpha
-        return max(-cfg.max_steer, min(cfg.max_steer, self._steer))
+        steer = max(-cfg.max_steer, min(cfg.max_steer, self._steer))
+        # 返回的是"本帧控制增益之前的参考偏差"，也就是跟踪误差本身；
+        # 若返回 desired 或 steer，量纲会混进增益里，统计出来不是误差。
+        return steer, abs(cross_track), heading_error
 
 
 def idm_accel(v: float, v0: float, gap: float, lead_speed: float,

@@ -1,0 +1,51 @@
+{
+  "id": "replay_mixed",
+  "name": "回溯一致性：多行为混合",
+  "laneCount": 3,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.85,
+  "visibility": 1.0,
+  "durationSeconds": 24.0,
+  "egoSpeed": 10.0,
+  "sensor": {
+    "lidarRange": 60.0,
+    "lidarPointsPerMeter": 1.5
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 42.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 8.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    },
+    {
+      "type": "car",
+      "x": 6.0,
+      "y": -3.5,
+      "theta": 0.0,
+      "speed": 12.0,
+      "behavior": "cut_in",
+      "trigger": 5.0,
+      "laneChangeSeconds": 3.2,
+      "brakeAccel": 1.5,
+      "speedFloor": 5.0
+    },
+    {
+      "type": "car",
+      "x": 25.0,
+      "y": -3.5,
+      "theta": 0.0,
+      "speed": 9.0,
+      "behavior": "constant",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "ego_speed", "min": 7.0, "max": 14.0, "step": 0.5 },
+    { "name": "cut_in_trigger", "min": 2.0, "max": 8.0, "step": 0.5 }
+  ]
+}

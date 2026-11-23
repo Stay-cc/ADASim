@@ -1,0 +1,42 @@
+{
+  "id": "cut_in_simple",
+  "name": "邻道切入（无制动）",
+  "laneCount": 3,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 20.0,
+  "egoSpeed": 11.0,
+  "sensor": {
+    "lidarRange": 60.0,
+    "lidarPointsPerMeter": 2.0
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 55.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 7.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    },
+    {
+      "type": "car",
+      "x": 8.0,
+      "y": -3.5,
+      "theta": 0.0,
+      "speed": 13.0,
+      "behavior": "cut_in",
+      "trigger": 3.0,
+      "laneChangeSeconds": 3.0,
+      "brakeAccel": 0.0,
+      "speedFloor": 6.0
+    }
+  ],
+  "parameters": [
+    { "name": "cut_in_trigger", "min": 1.5, "max": 6.0, "step": 0.25 },
+    { "name": "ego_speed", "min": 7.0, "max": 15.0, "step": 0.5 }
+  ]
+}

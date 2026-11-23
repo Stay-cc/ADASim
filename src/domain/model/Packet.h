@@ -24,6 +24,7 @@ struct StatePacket {
     double simTime{0.0};
     Pose ego{};
     double egoSpeed{0.0};
+    double curvature{0.0};   ///< 道路中心线曲率，1/m；算法侧据此生成参考路径
     std::vector<EntityState> obstacles;
 };
 

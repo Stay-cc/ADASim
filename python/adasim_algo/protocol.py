@@ -62,6 +62,9 @@ class StateFrame:
     sim_time: float
     ego: EgoState
     obstacles: list[TruthObstacle] = field(default_factory=list)
+    # 道路曲率，1/m，正值左弯。老版本底座不发这个字段，缺省按直道处理。
+    curvature: float = 0.0
+    ack_seq: int = -1
 
 
 @dataclass(slots=True)
@@ -123,10 +126,13 @@ def parse_state(payload: bytes) -> StateFrame | None:
     try:
         frame = int(obj.get("frame", 0))
         sim_time = float(obj.get("t", 0.0))
+        curvature = float(obj.get("curvature", 0.0))
+        ack_seq = int(obj.get("ackSeq", -1))
     except (TypeError, ValueError):
         return None
 
-    return StateFrame(frame=frame, sim_time=sim_time, ego=ego, obstacles=obstacles)
+    return StateFrame(frame=frame, sim_time=sim_time, ego=ego,
+                      obstacles=obstacles, curvature=curvature, ack_seq=ack_seq)
 
 
 def encode_command(seq: int, frame: int, sim_time: float,

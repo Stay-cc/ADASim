@@ -1,0 +1,34 @@
+{
+  "id": "latency_probe",
+  "name": "通信时延探针：轻载稳态跟车",
+  "laneCount": 2,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 30.0,
+  "egoSpeed": 12.0,
+  "sensor": {
+    "lidarRange": 60.0,
+    "lidarPointsPerMeter": 1.5
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 40.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 12.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    {
+      "name": "ego_speed",
+      "min": 8.0,
+      "max": 14.0,
+      "step": 1.0
+    }
+  ]
+}

@@ -62,8 +62,9 @@ public:
     [[nodiscard]] bool pollCommand(domain::ControlCommand& out) override;
     [[nodiscard]] bool linkAlive() const noexcept override;
 
-    /// 往返时延估计（毫秒）：由指令的 echoFrameId 与当前帧号差换算。
-    [[nodiscard]] double lastRoundTripMs() const noexcept { return lastRttMs_; }
+    /// 最近一次收到并回带的指令序号，-1 表示尚未收到过指令。
+    /// 算法侧用它测"指令发出 → 被底座消费"的往返时延。
+    [[nodiscard]] qint64 lastAckSeq() const noexcept { return lastAckSeq_; }
     [[nodiscard]] quint64 droppedCloudChunks() const noexcept { return droppedChunks_; }
 
 signals:
@@ -90,7 +91,7 @@ private:
     QElapsedTimer clock_;
     qint64 lastRxMs_{0};
     std::atomic<bool> alive_{false};
-    double lastRttMs_{0.0};
+    qint64 lastAckSeq_{-1};   ///< 仅在 GUI 线程读写，无需原子
     quint64 droppedChunks_{0};
     QString error_;
 };

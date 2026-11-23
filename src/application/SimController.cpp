@@ -159,6 +159,7 @@ void SimController::publish() {
     sp.simTime = current_.simTime;
     sp.ego = current_.ego;
     sp.egoSpeed = current_.egoSpeed;
+    sp.curvature = current_.curvature;
     sp.obstacles = current_.obstacles;
     transport_.publishState(sp);
 

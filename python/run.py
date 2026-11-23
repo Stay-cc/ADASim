@@ -40,7 +40,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cruise", type=float, default=11.0, help="期望车速，m/s")
     p.add_argument("--truth", action="store_true", help="用场景真值替代点云感知（对照实验）")
     p.add_argument("--quiet", action="store_true", help="不打印每秒状态行")
+    p.add_argument("--warmup", type=float, default=3.0,
+                   help="稳态误差统计的起始仿真时刻，s")
     p.add_argument("--self-test", action="store_true", help="运行离线自检后退出")
+    p.add_argument("--summary-json", default=None,
+                   help="把会话汇总写成 JSON，供实验脚本聚合")
     return p
 
 
@@ -58,6 +62,7 @@ def main(argv=None) -> int:
         use_truth=args.truth,
         verbose=not args.quiet,
         planning_cfg=cfg,
+        warmup_seconds=args.warmup,
     )
 
     try:
@@ -72,6 +77,13 @@ def main(argv=None) -> int:
         summary = node.summary()
 
     _print_summary(summary)
+
+    if args.summary_json:
+        # ensure_ascii=False：中文键名保持可读，实验报告里要直接引用。
+        with open(args.summary_json, "w", encoding="utf-8") as fh:
+            json.dump(summary, fh, ensure_ascii=False, indent=2)
+        print(f"汇总已写出：{args.summary_json}")
+
     return 0
 
 
@@ -81,11 +93,21 @@ def _print_summary(s: dict) -> None:
     print(f"状态帧/指令帧: {s['状态帧']} / {s['指令帧']}")
     print(f"点云帧/点数  : {s['点云帧']} / 平均 {s['平均点数']:.1f} 点")
     print(f"单帧计算     : {s['平均计算']:.3f} ms")
-    gap = "无前车" if math.isinf(s["最小车距"]) else f"{s['最小车距']:.2f} m"
-    ttc = "无" if math.isinf(s["最小TTC"]) else f"{s['最小TTC']:.2f} s"
+    gap = "无前车" if s["最小车距"] is None else f"{s['最小车距']:.2f} m"
+    ttc = "无" if s["最小TTC"] is None else f"{s['最小TTC']:.2f} s"
     print(f"最小车距/TTC : {gap} / {ttc}")
     print(f"最大加速度   : {s['最大加速度']:.2f} m/s^2")
     print(f"决策分布     : {s['决策分布']}")
+    if s["横向误差RMS"] is None:
+        print("横向误差     : 无有效样本（运行时长不足 warmup）")
+    else:
+        print(f"横向误差     : RMS {s['横向误差RMS']:.3f} m  "
+              f"峰值 {s['横向误差峰值']:.3f} m")
+        print(f"航向/速度误差: {s['航向误差RMS']:.4f} rad / {s['速度误差RMS']:.3f} m/s")
+    if s["时延样本"]:
+        print(f"往返时延     : 均值 {s['往返时延均值']:.2f} ms  "
+              f"标准差 {s['往返时延标准差']:.2f}  P99 {s['往返时延P99']:.2f}  "
+              f"净 {s['净时延均值']:.2f}（扣 {s['名义帧周期']:.1f} ms 帧周期）")
     if s["失步次数"] or s["丢片帧"] or s["坏包"]:
         print(f"协议异常     : 失步 {s['失步次数']} / 丢片帧 {s['丢片帧']} / 坏包 {s['坏包']}")
     else:

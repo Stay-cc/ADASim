@@ -138,6 +138,9 @@ void TcpUdpGateway::publishState(const domain::StatePacket& packet) {
     root.insert(QStringLiteral("type"), QStringLiteral("state"));
     root.insert(QStringLiteral("frame"), static_cast<qint64>(packet.frameId));
     root.insert(QStringLiteral("t"), packet.simTime);
+    // 曲率取 0 时也照发：算法侧不该靠"字段缺失"去猜这是直道，
+    // 显式给 0 才能把"直道"与"老版本底座不发这个字段"区分开。
+    root.insert(QStringLiteral("curvature"), packet.curvature);
 
     QJsonObject ego;
     ego.insert(QStringLiteral("x"), packet.ego.x);
@@ -160,6 +163,11 @@ void TcpUdpGateway::publishState(const domain::StatePacket& packet) {
         obstacles.append(o);
     }
     root.insert(QStringLiteral("obstacles"), obstacles);
+
+    // 回带最近一次收到的指令序号。算法侧据此计算"发出指令 → 看到它被消费"
+    // 的往返时延，不需要两端时钟对齐——两边各用自己的单调时钟即可，
+    // 这是跨进程测时延唯一不依赖时钟同步的做法。
+    root.insert(QStringLiteral("ackSeq"), static_cast<qint64>(lastAckSeq_));
 
     const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
 
@@ -294,6 +302,7 @@ void TcpUdpGateway::handlePayload(const QByteArray& payload) {
         }
         pending_.push_back(cmd);
     }
+    lastAckSeq_ = static_cast<qint64>(cmd.seq);
     emit commandReceived();
 }
 
