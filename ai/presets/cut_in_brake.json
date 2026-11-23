@@ -1,0 +1,46 @@
+{
+  "id": "preset_cut_in_brake",
+  "name": "邻道车切入并制动",
+  "laneCount": 2,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 20.0,
+  "egoSpeed": 10.0,
+  "sensor": {
+    "lidarRange": 50.0,
+    "lidarPointsPerMeter": 1.5
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 12.0,
+      "y": 3.5,
+      "theta": 0.0,
+      "speed": 11.0,
+      "behavior": "cut_in",
+      "trigger": 3.0,
+      "targetY": 0.0,
+      "laneChangeSeconds": 4.0,
+      "brakeAccel": 3.0,
+      "speedFloor": 1.5
+    },
+    {
+      "type": "car",
+      "x": 45.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 10.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "ego_speed", "min": 6.0, "max": 16.0, "step": 0.5 },
+    { "name": "cut_in_trigger", "min": 1.0, "max": 8.0, "step": 0.5 },
+    { "name": "lead_gap", "min": 30.0, "max": 60.0, "step": 2.0 },
+    { "name": "friction", "min": 0.3, "max": 0.95, "step": 0.05 },
+    { "name": "perception_noise", "min": 0.0, "max": 1.0, "step": 0.1 }
+  ]
+}

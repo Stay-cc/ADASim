@@ -6,8 +6,6 @@
 namespace adasim::app {
 namespace {
 
-constexpr double kDefaultEgoSpeed = 8.0;  // m/s，模板未给出时使用
-
 domain::EntityKind kindFromString(const std::string& type) {
     if (type == "truck") {
         return domain::EntityKind::Truck;
@@ -74,6 +72,11 @@ std::vector<std::string> ScenarioService::validate(const domain::ScenarioTemplat
     if (tmpl.durationSeconds <= 0.0) {
         issues.emplace_back("场景时长必须为正");
     }
+    // 自车初速既决定几何也决定时序：为负会让积分反向，过大则超出
+    // 运动学模型的适用范围（本模型的轮胎侧偏假设到不了更高速度）。
+    if (tmpl.egoSpeed < 0.0 || tmpl.egoSpeed > 60.0) {
+        issues.emplace_back("自车初速应在 [0, 60] m/s");
+    }
     // 传感器参数的上下界不是审美问题：密度过大会让一帧点云涨到百万级，
     // 直接把渲染与网络压垮；为负则采样循环会退化成空点云。
     if (tmpl.sensor.lidarRange <= 0.0 || tmpl.sensor.lidarRange > 500.0) {
@@ -112,6 +115,16 @@ std::vector<std::string> ScenarioService::validate(const domain::ScenarioTemplat
             }
             if (actor.triggerSeconds >= tmpl.durationSeconds) {
                 issues.emplace_back("切入触发时刻不早于场景结束，永远不会发生：" + actor.type);
+            }
+        }
+        // 制动行为的两个参数缺一不可：没有 brakeAccel 就永远减不了速，
+        // 表现为一辆匀速车——文件写得像"急刹"、跑起来却什么也没发生。
+        if (actor.behavior == domain::BehaviorKind::Brake) {
+            if (actor.brakeAccel <= 0.0) {
+                issues.emplace_back("制动行为必须给出正的减速度 brakeAccel：" + actor.type);
+            }
+            if (actor.triggerSeconds >= tmpl.durationSeconds) {
+                issues.emplace_back("制动触发时刻不早于场景结束，永远不会发生：" + actor.type);
             }
         }
         if (actor.brakeAccel < 0.0) {
@@ -155,14 +168,22 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     state.simTime = 0.0;
     state.ego = domain::Pose{0.0, 0.0, 0.0};
 
-    double egoSpeed = kDefaultEgoSpeed;
-    for (const auto& param : tmpl.parameters) {
-        if (param.name == "ego_speed") {
-            egoSpeed = param.min;  // 默认取搜索区间下界，作为基线工况
-            break;
+    double egoSpeed = tmpl.egoSpeed;
+    if (!tmpl.egoSpeedExplicit) {
+        // 兼容旧场景：早期版本没有 egoSpeed 字段，自车初速只能从
+        // parameters 里找一个叫 ego_speed 的项、取其搜索下界当基线。
+        // 这条路径保留，但新场景应直接写 egoSpeed。
+        for (const auto& param : tmpl.parameters) {
+            if (param.name == "ego_speed") {
+                egoSpeed = param.min;
+                break;
+            }
         }
     }
     state.egoSpeed = egoSpeed;
+    // 附着系数随初始状态下发。此前它只存在于模板里、物理层根本没读，
+    // 于是"路面湿滑"这个搜索变量无论怎么变，仿真结果都一模一样。
+    state.friction = tmpl.friction;
 
     std::uint32_t id = 1;
     for (const auto& actor : tmpl.actors) {

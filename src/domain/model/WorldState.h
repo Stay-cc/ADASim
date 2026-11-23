@@ -38,6 +38,10 @@ struct WorldState {
     double egoSpeed{0.0};      ///< m/s
     double egoAccel{0.0};      ///< m/s^2
     double steer{0.0};         ///< 前轮转角，rad
+    /// 路面附着系数。放进状态而不是放在引擎的成员变量里，有两个原因：
+    /// 一是它对所有人（自车制动、参与者制动）都是同一个量，该由状态携带；
+    /// 二是回溯重推演时它必须跟着帧一起回退，成员变量做不到这一点。
+    double friction{0.9};
     std::vector<EntityState> obstacles;
 };
 

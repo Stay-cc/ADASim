@@ -8,6 +8,7 @@
 namespace adasim::domain {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kGravity = 9.81;
 
 struct Derivative {
     double dx{0.0};
@@ -60,9 +61,15 @@ WorldState PhysicsEngine::step(const WorldState& in, double dt,
     out.frameId = in.frameId + 1;
     out.simTime = in.simTime + dt;
 
-    // 控制量限幅：转角受机械限制，加速度受动力与制动能力限制
+    // 控制量限幅：转角受机械限制，加速度受动力与制动能力限制。
+    // 制动能力还要受路面附着的约束：μ 为 0.3 的湿滑路面刹不出 -6 m/s²，
+    // 硬压到车辆极限会让"低附着"这个搜索变量完全失效——仿真里能停住、
+    // 现实里停不住，正是失效搜索要找的那类差异。
     const double steer = std::clamp(cmd.steer, -params_.maxSteer, params_.maxSteer);
-    const double accel = std::clamp(cmd.targetAccel, params_.accelMin, params_.accelMax);
+    const double gripDecel = std::max(0.5, in.friction * kGravity);
+    const double accel = std::clamp(cmd.targetAccel,
+                                    std::max(params_.accelMin, -gripDecel),
+                                    params_.accelMax);
 
     out.egoSpeed = std::clamp(in.egoSpeed + accel * dt, params_.speedMin, params_.speedMax);
     out.egoAccel = accel;

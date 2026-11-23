@@ -1,0 +1,32 @@
+{
+  "id": "preset_follow_lead",
+  "name": "直道稳态跟车",
+  "laneCount": 2,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 40.0,
+  "egoSpeed": 8.0,
+  "sensor": {
+    "lidarRange": 50.0,
+    "lidarPointsPerMeter": 1.5
+  },
+  "actors": [
+    {
+      "type": "car",
+      "x": 25.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 8.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "ego_speed", "min": 5.0, "max": 15.0, "step": 0.5 },
+    { "name": "lead_gap", "min": 10.0, "max": 40.0, "step": 2.0 },
+    { "name": "friction", "min": 0.3, "max": 0.95, "step": 0.05 },
+    { "name": "perception_noise", "min": 0.0, "max": 1.0, "step": 0.1 }
+  ]
+}

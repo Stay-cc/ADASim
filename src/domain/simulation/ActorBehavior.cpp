@@ -7,6 +7,7 @@ namespace adasim::domain {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kGravity = 9.81;
 
 /// 判定"同一车道"的横向容差。取 1.5 m 而不是半个车道宽（1.75 m）：
 /// 切入过半时那辆车已经在两车道之间，若按 1.75 m 判，它会在临界点上
@@ -63,23 +64,8 @@ LeadInfo findLead(const WorldState& state, const EntityState& self) {
 
 /// 智能驾驶员模型（IDM）。
 double idmAccel(const EntityState& self, const LeadInfo& lead) {
-    const double v = std::max(0.0, self.speed);
-    const double desired = self.behavior.desiredSpeed > 0.0 ? self.behavior.desiredSpeed : v;
-    const double v0 = std::max(0.5, desired);
-
-    double accel = kIdmAccelMax * (1.0 - std::pow(v / v0, 4.0));
-    if (!lead.found) {
-        return std::clamp(accel, -kIdmAccelMax, kIdmAccelMax);
-    }
-
-    const double closing = v - lead.speed;
-    const double sStar = kIdmStandstill +
-                         std::max(0.0, v * kIdmHeadway +
-                                           v * closing / (2.0 * std::sqrt(kIdmAccelMax *
-                                                                          kIdmDecelComfort)));
-    const double ratio = sStar / std::max(lead.bumperGap, 0.3);
-    accel -= kIdmAccelMax * ratio * ratio;
-    return std::clamp(accel, -kIdmDecelComfort * 3.0, kIdmAccelMax);
+    return idmAccelFor(self.speed, self.behavior.desiredSpeed, lead.found,
+                       lead.bumperGap, lead.speed);
 }
 
 void advanceStraight(EntityState& e, double dt) {
@@ -95,7 +81,24 @@ void advanceFollowing(const WorldState& in, EntityState& e, double dt) {
     advanceStraight(e, dt);
 }
 
-void advanceCutIn(EntityState& e, double dt, double simTime) {
+/// 制动行为：到触发时刻起以固定减速度减到 speedFloor。
+///
+/// 单独作为一个行为而不是"跟驰的一个参数"，是因为二者对前车的依赖相反：
+/// 跟驰看的是前车（别人决定我减多少），制动看的是自己的触发时刻与减速度
+/// （我决定我减多少）。塞进 IDM 会让它在触发瞬间与前车的距离误差打架。
+void advanceBrake(EntityState& e, double dt, double simTime, double friction) {
+    const double elapsed = simTime - e.behavior.triggerSeconds;
+    if (elapsed > 0.0 && e.behavior.brakeAccel > 0.0) {
+        // 制动能力受路面附着封顶：与前车同时打滑才符合物理，
+        // 否则低附着路面上会出现"前车刹得住、自车也刹得住"的假象。
+        const double grip = std::max(0.5, friction * kGravity);
+        const double decel = std::min(e.behavior.brakeAccel, grip);
+        e.speed = std::max(e.behavior.speedFloor, e.speed - decel * dt);
+    }
+    advanceStraight(e, dt);
+}
+
+void advanceCutIn(EntityState& e, double dt, double simTime, double friction) {
     const double span = e.behavior.targetY - e.behavior.originY;
     const double duration = std::max(0.2, e.behavior.laneChangeSeconds);
     const double elapsed = simTime - e.behavior.triggerSeconds;
@@ -122,7 +125,9 @@ void advanceCutIn(EntityState& e, double dt, double simTime) {
     // 制动从横向过半开始：这是"别车后立刻踩刹车"的时序，
     // 若等平移完全结束再刹，两车横向已无重叠，威胁就不存在了。
     if (progress >= 0.5 && e.behavior.brakeAccel > 0.0) {
-        e.speed = std::max(e.behavior.speedFloor, e.speed - e.behavior.brakeAccel * dt);
+        const double grip = std::max(0.5, friction * kGravity);
+        const double decel = std::min(e.behavior.brakeAccel, grip);
+        e.speed = std::max(e.behavior.speedFloor, e.speed - decel * dt);
     }
 
     e.pose.x += e.speed * std::cos(e.pose.theta) * dt;
@@ -133,6 +138,32 @@ void advanceCutIn(EntityState& e, double dt, double simTime) {
 double cutInLateralRatio(double progress) {
     const double p = std::clamp(progress, 0.0, 1.0);
     return 0.5 * (1.0 - std::cos(kPi * p));
+}
+
+/// 智能驾驶员模型（IDM）。标量版本，导出给离线评估的自车控制器复用。
+///
+/// 之所以导出而不是让调用方自己写一份：自车与参与者若各用一套纵向律，
+/// 失效搜索得到的"临界间距"只对其中一套成立，结论无法迁移到另一套。
+/// 放在匿名命名空间外是必须的——放在里面就成了内部链接，链接期找不到定义。
+double idmAccelFor(double selfSpeed, double desiredSpeed, bool leadFound,
+                   double bumperGap, double leadSpeed) {
+    const double v = std::max(0.0, selfSpeed);
+    const double desired = desiredSpeed > 0.0 ? desiredSpeed : v;
+    const double v0 = std::max(0.5, desired);
+
+    double accel = kIdmAccelMax * (1.0 - std::pow(v / v0, 4.0));
+    if (!leadFound) {
+        return std::clamp(accel, -kIdmAccelMax, kIdmAccelMax);
+    }
+
+    const double closing = v - leadSpeed;
+    const double sStar = kIdmStandstill +
+                         std::max(0.0, v * kIdmHeadway +
+                                           v * closing / (2.0 * std::sqrt(kIdmAccelMax *
+                                                                          kIdmDecelComfort)));
+    const double ratio = sStar / std::max(bumperGap, 0.3);
+    accel -= kIdmAccelMax * ratio * ratio;
+    return std::clamp(accel, -kIdmDecelComfort * 3.0, kIdmAccelMax);
 }
 
 double idmAccelFor(const WorldState& state, const EntityState& self) {
@@ -150,7 +181,10 @@ void advanceActor(const WorldState& in, const EntityState& before, EntityState& 
             advanceFollowing(in, after, dt);
             break;
         case BehaviorKind::CutIn:
-            advanceCutIn(after, dt, in.simTime + dt);
+            advanceCutIn(after, dt, in.simTime + dt, in.friction);
+            break;
+        case BehaviorKind::Brake:
+            advanceBrake(after, dt, in.simTime + dt, in.friction);
             break;
     }
     // 加速度由速度差反推，避免行为分支各自维护一份而与实际运动不符。

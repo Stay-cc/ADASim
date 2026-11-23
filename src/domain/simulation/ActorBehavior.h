@@ -23,6 +23,11 @@ void advanceActor(const WorldState& in, const EntityState& before, EntityState& 
 /// 这类分叉在数值上不会报错，只会让对照实验悄悄失真。
 [[nodiscard]] double idmAccelFor(const WorldState& state, const EntityState& self);
 
+/// IDM 的标量形式。离线评估的自车控制器直接用这个，参数与参与者完全一致。
+/// `leadFound` 为假时只做自由流加减速；`bumperGap` 是净距（已扣两车半长）。
+[[nodiscard]] double idmAccelFor(double selfSpeed, double desiredSpeed, bool leadFound,
+                                 double bumperGap, double leadSpeed);
+
 /// 切入的横向位移曲线（余弦型，端点横向速度为零）。
 ///
 /// 单独暴露的原因：它决定了点云里那辆车的航向角，是最容易被怀疑"穿模/瞬移"的地方，

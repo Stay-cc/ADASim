@@ -54,6 +54,14 @@ struct ScenarioTemplate {
     double friction{0.9};       ///< 路面附着系数
     double visibility{1.0};     ///< 能见度系数，1 为晴好
     double durationSeconds{30.0};
+    /// 自车初速，m/s。写进模板而不是只放在 parameters 里，是因为它既是
+    /// 场景的物理属性（决定几何与时序），也是失效搜索的搜索变量之一。
+    /// 早先只能从 `parameters` 里找一个叫 ego_speed 的项取 min，那让
+    /// "搜索下界"和"实际取值"绑成同一个数，改一个必伤另一个。
+    double egoSpeed{8.0};
+    /// egoSpeed 是否由文件显式给出。未给出时回退到旧的 parameters 约定，
+    /// 保证既有场景文件的语义不变。
+    bool egoSpeedExplicit{false};
     SensorSpec sensor{};
     std::vector<ActorSpec> actors;
     std::vector<ParameterSpec> parameters;

@@ -18,6 +18,7 @@ QString behaviorToString(domain::BehaviorKind kind) {
         case domain::BehaviorKind::Constant: return QStringLiteral("constant");
         case domain::BehaviorKind::CarFollowing: return QStringLiteral("car_following");
         case domain::BehaviorKind::CutIn: return QStringLiteral("cut_in");
+        case domain::BehaviorKind::Brake: return QStringLiteral("brake");
     }
     return QStringLiteral("constant");
 }
@@ -25,6 +26,7 @@ QString behaviorToString(domain::BehaviorKind kind) {
 domain::BehaviorKind behaviorFromString(const QString& s) {
     if (s == QLatin1String("car_following")) return domain::BehaviorKind::CarFollowing;
     if (s == QLatin1String("cut_in")) return domain::BehaviorKind::CutIn;
+    if (s == QLatin1String("brake")) return domain::BehaviorKind::Brake;
     return domain::BehaviorKind::Constant;
 }
 
@@ -77,6 +79,8 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
     tmpl.friction = num(root, "friction", 0.9);
     tmpl.visibility = num(root, "visibility", 1.0);
     tmpl.durationSeconds = num(root, "durationSeconds", 30.0);
+    tmpl.egoSpeedExplicit = root.value(QStringLiteral("egoSpeed")).isDouble();
+    tmpl.egoSpeed = num(root, "egoSpeed", tmpl.egoSpeed);
 
     // sensor 块可缺省：缺省即传感器默认参数，老场景文件不必改。
     if (root.value(QStringLiteral("sensor")).isObject()) {
@@ -147,6 +151,7 @@ bool JsonScenarioRepository::save(const std::string& path,
     root.insert(QStringLiteral("friction"), tmpl.friction);
     root.insert(QStringLiteral("visibility"), tmpl.visibility);
     root.insert(QStringLiteral("durationSeconds"), tmpl.durationSeconds);
+    root.insert(QStringLiteral("egoSpeed"), tmpl.egoSpeed);
 
     QJsonObject sensor;
     sensor.insert(QStringLiteral("lidarRange"), tmpl.sensor.lidarRange);

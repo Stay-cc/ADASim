@@ -13,6 +13,7 @@ enum class BehaviorKind : std::uint8_t {
     Constant = 0,    ///< 匀速直行
     CarFollowing,    ///< 跟驰：按 IDM 追击同车道前方最近的车
     CutIn,           ///< 切入：到触发时刻横向平移至目标车道，过半后开始制动
+    Brake,           ///< 制动：到触发时刻起以 brakeAccel 减速至 speedFloor
 };
 
 /// 行为参数。全部为绝对值，不含任何"已走了几步"的隐藏计数器——

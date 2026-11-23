@@ -6,6 +6,7 @@
 #   adasim_infra   静态库  L4  实现 L3 端口，依赖 Qt6
 #   adasim         可执行  L1  + 装配根，链接 app 与 infra
 #   adasim_bench   可执行  —   点云压测（domain + infra，不经控制器与界面）
+#   adasim_batch   可执行  —   离线评估服务（行式 JSON，供 AI 失效搜索调用）
 #
 # 依赖关系刻意做成单向：app 不认识 infra，infra 不认识 app，
 # 二者只通过 domain 的端口交接，连接点在 main.cpp。
@@ -26,6 +27,10 @@ add_subdirectory(infrastructure)
 
 # 压测工具需要 Qt（渲染器与网关），因此和 GUI 同进退
 add_subdirectory(bench)
+
+# 批量评估服务同样依赖 Qt（场景是 JSON，解析走同一套仓储），
+# 它的调用方是 Python 侧的失效搜索，不在实时链路里
+add_subdirectory(batch)
 
 # 表现层不单独成库：它只能被最终可执行程序使用，不允许被其他目标依赖
 set(ADASIM_PRESENTATION_SOURCES
