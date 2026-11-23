@@ -1,0 +1,35 @@
+{
+  "id": "cut_in_brake",
+  "name": "邻道切入并急刹",
+  "laneCount": 3,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.8,
+  "visibility": 1.0,
+  "durationSeconds": 25.0,
+  "actors": [
+    {
+      "type": "car",
+      "x": 30.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 5.0,
+      "behavior": "car_following",
+      "trigger": 0.0
+    },
+    {
+      "type": "car",
+      "x": 12.0,
+      "y": 3.5,
+      "theta": 0.0,
+      "speed": 9.0,
+      "behavior": "cut_in",
+      "trigger": 3.0
+    }
+  ],
+  "parameters": [
+    { "name": "cutInTrigger", "min": 1.5, "max": 6.0, "step": 0.25 },
+    { "name": "cutInSpeed", "min": 5.0, "max": 14.0, "step": 0.5 },
+    { "name": "leadGap", "min": 15.0, "max": 45.0, "step": 2.5 }
+  ]
+}

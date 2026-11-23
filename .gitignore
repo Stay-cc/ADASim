@@ -1,0 +1,39 @@
+# 构建产物
+build/
+out/
+cmake-build-*/
+
+# 可执行与库
+*.exe
+*.dll
+*.a
+*.lib
+*.obj
+*.o
+*.pdb
+
+# 文档流水线中间产物
+output/
+
+# IDE
+.vscode/
+.idea/
+*.user
+CMakeUserPresets.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 本机助手的工作区（日志与记忆，不属于源码）
+.workbuddy/
+
+# 其余 IDE 临时文件
+.vs/
+CMakeLists.txt.user
+*.swp

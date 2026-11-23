@@ -1,0 +1,25 @@
+{
+  "id": "following_lead",
+  "name": "直道跟车",
+  "laneCount": 2,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 40.0,
+  "actors": [
+    {
+      "type": "car",
+      "x": 25.0,
+      "y": 0.0,
+      "theta": 0.0,
+      "speed": 4.2,
+      "behavior": "car_following",
+      "trigger": 0.0
+    }
+  ],
+  "parameters": [
+    { "name": "leadGap", "min": 10.0, "max": 40.0, "step": 2.0 },
+    { "name": "leadSpeed", "min": 2.0, "max": 12.0, "step": 0.5 }
+  ]
+}

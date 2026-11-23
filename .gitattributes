@@ -1,0 +1,11 @@
+# 统一换行：仓库内存 LF，检出时也用 LF（MinGW 工具链与 Python 都无压力），
+# 免得换一台机器打开就变成"整个文件都改了"。
+* text=auto eol=lf
+
+# 二进制：不要做换行转换，也不要尝试文本 diff
+*.png   binary
+*.jpg   binary
+*.docx  binary
+*.xlsx  binary
+*.exe   binary
+*.a     binary
