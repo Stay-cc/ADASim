@@ -101,6 +101,14 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
         spec.speed = num(o, "speed", 0.0);
         spec.behavior = behaviorFromString(o.value(QStringLiteral("behavior")).toString());
         spec.triggerSeconds = num(o, "trigger", 0.0);
+
+        // 切入相关的可选字段。targetY 要区分"没写"与"写了 0"：
+        // 没写时由车道宽推出目标车道，写了 0 则表示作者明确要求切到中心车道。
+        spec.targetYExplicit = o.value(QStringLiteral("targetY")).isDouble();
+        spec.targetY = num(o, "targetY", 0.0);
+        spec.laneChangeSeconds = num(o, "laneChangeSeconds", 4.0);
+        spec.brakeAccel = num(o, "brakeAccel", 0.0);
+        spec.speedFloor = num(o, "speedFloor", 0.0);
         tmpl.actors.push_back(std::move(spec));
     }
 
@@ -155,6 +163,16 @@ bool JsonScenarioRepository::save(const std::string& path,
         o.insert(QStringLiteral("speed"), a.speed);
         o.insert(QStringLiteral("behavior"), behaviorToString(a.behavior));
         o.insert(QStringLiteral("trigger"), a.triggerSeconds);
+        // 只在真正用到时写出，且 targetY 只在显式给出时写：
+        // 无条件写 targetY=0 会让"继承车道默认值"的场景在存盘后变成"切到中心车道"。
+        if (a.behavior == domain::BehaviorKind::CutIn) {
+            if (a.targetYExplicit) {
+                o.insert(QStringLiteral("targetY"), a.targetY);
+            }
+            o.insert(QStringLiteral("laneChangeSeconds"), a.laneChangeSeconds);
+            o.insert(QStringLiteral("brakeAccel"), a.brakeAccel);
+            o.insert(QStringLiteral("speedFloor"), a.speedFloor);
+        }
         actors.append(o);
     }
     root.insert(QStringLiteral("actors"), actors);

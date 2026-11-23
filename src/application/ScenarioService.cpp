@@ -24,6 +24,17 @@ domain::EntityKind kindFromString(const std::string& type) {
     return domain::EntityKind::Unknown;
 }
 
+/// 切入的默认目标横向坐标：朝自车所在车道（y=0）方向平移一个车道。
+///
+/// 场景作者通常只写"从哪条车道切进来"，目标车道是隐含的；
+/// 要求他再写一个 y 值，等于强迫他把车道宽和车道索引算一遍，很容易写错。
+double defaultCutInTargetY(double originY, double laneWidth) {
+    if (std::abs(originY) < 1e-6) {
+        return -laneWidth;   // 已经在中心车道：默认往左切一条
+    }
+    return originY - std::copysign(laneWidth, originY);
+}
+
 }  // namespace
 
 ScenarioService::ScenarioService(domain::IPersistence& store) : store_(store) {}
@@ -86,6 +97,29 @@ std::vector<std::string> ScenarioService::validate(const domain::ScenarioTemplat
         if (reach > 200.0) {
             issues.emplace_back("参与者初始位置距自车超过 200 m，可能不在量程内：" + actor.type);
         }
+
+        // 切入必须真的"换道"：目标与起点重合时，那辆车会一直直行，
+        // 场景看起来加载成功却什么也没发生——这类静默失败最难排查，故前置拦截。
+        if (actor.behavior == domain::BehaviorKind::CutIn) {
+            const double target =
+                actor.targetYExplicit ? actor.targetY
+                                      : defaultCutInTargetY(actor.pose.y, tmpl.laneWidth);
+            if (std::abs(target - actor.pose.y) < 0.5) {
+                issues.emplace_back("切入的起点与目标横向坐标过于接近：" + actor.type);
+            }
+            if (actor.laneChangeSeconds < 0.5 || actor.laneChangeSeconds > 30.0) {
+                issues.emplace_back("切入耗时应在 [0.5, 30] 秒：" + actor.type);
+            }
+            if (actor.triggerSeconds >= tmpl.durationSeconds) {
+                issues.emplace_back("切入触发时刻不早于场景结束，永远不会发生：" + actor.type);
+            }
+        }
+        if (actor.brakeAccel < 0.0) {
+            issues.emplace_back("减速度应填正值：" + actor.type);
+        }
+        if (actor.speedFloor < 0.0 || actor.speedFloor > actor.speed + 1e-9) {
+            issues.emplace_back("制动目标车速不能为负，也不能高于初速：" + actor.type);
+        }
     }
 
     std::set<std::string> names;
@@ -139,6 +173,21 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
         entity.speed = actor.speed;
         entity.length = (entity.kind == domain::EntityKind::Truck) ? 9.0 : 4.5;
         entity.width = (entity.kind == domain::EntityKind::Truck) ? 2.5 : 1.9;
+
+        // 行为按"实例"落到世界状态里：同一份模板跑两次，行为参数必须各自独立，
+        // 否则回溯到中途再改参数会污染另一条时间线。
+        domain::BehaviorState& b = entity.behavior;
+        b.kind = actor.behavior;
+        b.triggerSeconds = actor.triggerSeconds;
+        b.originY = actor.pose.y;
+        b.targetY = actor.targetYExplicit
+                        ? actor.targetY
+                        : defaultCutInTargetY(actor.pose.y, tmpl.laneWidth);
+        b.laneChangeSeconds = actor.laneChangeSeconds;
+        b.brakeAccel = actor.brakeAccel;
+        b.speedFloor = actor.speedFloor;
+        b.desiredSpeed = actor.speed;
+
         state.obstacles.push_back(entity);
     }
 

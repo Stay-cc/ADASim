@@ -8,6 +8,7 @@
 set(ADASIM_DOMAIN_SOURCES
     model/ForwardGap.cpp
     timeline/TimelineBuffer.cpp
+    simulation/ActorBehavior.cpp
     simulation/PhysicsEngine.cpp)
 
 add_library(adasim_domain STATIC ${ADASIM_DOMAIN_SOURCES})

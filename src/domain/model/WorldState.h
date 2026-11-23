@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "domain/model/Behavior.h"
 #include "domain/model/Pose.h"
 #include "domain/model/Types.h"
 
@@ -26,6 +27,7 @@ struct EntityState {
     double yawRate{0.0};  ///< 航向角速度，rad/s
     double length{4.5};   ///< m
     double width{1.9};    ///< m
+    BehaviorState behavior{};  ///< 行为类型与参数，随状态进快照
 };
 
 /// 一帧的完整世界状态。这是领域层在各层之间传递的核心值类型。

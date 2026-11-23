@@ -4,22 +4,25 @@
 #include <string>
 #include <vector>
 
+#include "domain/model/Behavior.h"
 #include "domain/model/Pose.h"
 
 namespace adasim::domain {
 
-enum class BehaviorKind : std::uint8_t {
-    Constant = 0,    ///< 匀速
-    CarFollowing,    ///< 跟驰（IDM）
-    CutIn,           ///< 切入（到达触发时刻后横向位移）
-};
-
+/// 场景里的交通参与者。behavior 与 triggerSeconds 在这里只是"描述"，
+/// 真正参与推进的是世界状态里那份 BehaviorState（由 ScenarioService 实例化）。
 struct ActorSpec {
     std::string type{"car"};
     Pose pose{};
     double speed{0.0};
     BehaviorKind behavior{BehaviorKind::Constant};
     double triggerSeconds{0.0};
+
+    double targetY{0.0};            ///< 切入目标横向坐标；仅在 explicitly 为真时生效
+    bool targetYExplicit{false};
+    double laneChangeSeconds{4.0};  ///< 横向平移总时长
+    double brakeAccel{0.0};         ///< 切入过半后的减速度，m/s^2
+    double speedFloor{0.0};         ///< 减速到此为止，m/s
 };
 
 /// 可搜索参数的定义。语言解析与失效搜索共用这一份描述：

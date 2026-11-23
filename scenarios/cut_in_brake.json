@@ -7,13 +7,17 @@
   "friction": 0.8,
   "visibility": 1.0,
   "durationSeconds": 25.0,
+  "sensor": {
+    "lidarRange": 50.0,
+    "lidarPointsPerMeter": 3.0
+  },
   "actors": [
     {
       "type": "car",
-      "x": 30.0,
+      "x": 45.0,
       "y": 0.0,
       "theta": 0.0,
-      "speed": 5.0,
+      "speed": 6.0,
       "behavior": "car_following",
       "trigger": 0.0
     },
@@ -24,7 +28,10 @@
       "theta": 0.0,
       "speed": 9.0,
       "behavior": "cut_in",
-      "trigger": 3.0
+      "trigger": 2.5,
+      "laneChangeSeconds": 3.5,
+      "brakeAccel": 2.5,
+      "speedFloor": 1.5
     }
   ],
   "parameters": [

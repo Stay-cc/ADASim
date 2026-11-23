@@ -248,12 +248,16 @@ class AlgoNode:
         if plan.lead_id is not None:
             lead = next((t for t in tracks if t.id == plan.lead_id), None)
             if lead is not None:
-                if lead.speed > 8.0 and self._spike_logged < 3:
-                    # 本场景前车恒为 4.2 m/s，出现 8 m/s 以上必然失常：
-                    # 要么关联错配，要么滤波器被同帧重复更新放大。
+                # 速度尖峰判据必须与场景无关。早先写死"前车恒为 4.2 m/s，
+                # 超过 8 就是失常"，换到切入场景（前车 9 m/s）后每帧都误报——
+                # 这类把某个场景的常数当物理事实的断言，比没有诊断更误导人。
+                # 改为相对自车车速的上界：滤波器被放大时会出现远超自车量级的速度。
+                spike_limit = max(15.0, 2.0 * state.ego.speed + 5.0)
+                if lead.speed > spike_limit and self._spike_logged < 3:
                     self._spike_logged += 1
                     print(f"  [速度尖峰] frame={state.frame} v={lead.speed:.2f} "
-                          f"vx={lead.vx:+.2f} pos=({lead.x:.2f},{lead.y:.2f}) "
+                          f"限={spike_limit:.1f} vx={lead.vx:+.2f} "
+                          f"pos=({lead.x:.2f},{lead.y:.2f}) "
                           f"L={lead.length:.2f} 点云帧="
                           f"{-1 if self._latest_cloud is None else self._latest_cloud.frame}")
                 if plan.gap < 3.0 and self._near_logged < 3:

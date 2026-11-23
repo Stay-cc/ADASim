@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "domain/simulation/ActorBehavior.h"
+
 namespace adasim::domain {
 namespace {
 constexpr double kPi = 3.14159265358979323846;
@@ -68,13 +70,9 @@ WorldState PhysicsEngine::step(const WorldState& in, double dt,
     out.ego = integrate(in.ego, out.egoSpeed, steer, dt);
     out.ego.theta = std::remainder(out.ego.theta, 2.0 * kPi);
 
-    // 障碍物：本版本按各自速度沿航向匀速推进。
-    // 跟驰与切入由行为的 triggerSeconds 在场景层触发，后续接入行为树。
-    for (auto& entity : out.obstacles) {
-        entity.pose.theta += entity.yawRate * dt;
-        entity.pose.x += entity.speed * std::cos(entity.pose.theta) * dt;
-        entity.pose.y += entity.speed * std::sin(entity.pose.theta) * dt;
-    }
+    // 障碍物按各自行为推进（匀速 / 跟驰 / 切入）。
+    // 行为推进与自车积分分开：自车由控制指令驱动，参与者由行为模型驱动。
+    advanceActors(in, out, dt);
 
     return out;
 }
