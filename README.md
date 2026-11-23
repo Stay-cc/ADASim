@@ -96,14 +96,26 @@ adasim --record out/frames --frames 16 --interval 700 \
 python tools/demo.py
 ```
 
-它会按固定时序跑完一整条链路：底座起来 → 算法进程接入闭环控制 → 算法进程退出 →
-底座兜底减速，同时连续录帧与采样，最后生成 `output/demo/index.html`：
-一个能拖动的播放器（帧序列）、车速与车距曲线（断链时刻有标记）、关键读数。
+默认跑**三段连播**，每段各录一次真实仿真，串成一条可拖的时间轴：
+
+| 段 | 场景 | 演什么 |
+|---|---|---|
+| ① 跟驰 | `following_lead` | 算法在线，8 m/s 追近 4.2 m/s 前车，IDM 收敛到稳定间距 |
+| ② 切入 | `cut_in_brake` | 算法在线，邻道车切入后开始减速，自车让速保距 |
+| ③ 断链 | `cut_in_brake` | **同一场景**，算法进程接入 5 秒后退出，底座兜底接管 |
+
+第三段刻意复用第二段的场景：唯一变量是算法进程死没死，两段对比才是可控实验。
+产物 `output/demo/index.html` 是单文件（帧内联成 data URI），可直接发给别人：
+三段标签跳转、自动连播、每段一张车速/车距曲线（带播放头与离线灰底）、
+本段读数随段切换。画面上还有角标区分「算法未接入 / 离线兜底制动中 / 离线但车距有余量」——
+不标的话，观众会把底座的刹车当成算法的功劳。
 
 ```bash
-python tools/demo.py --scenario scenarios/curve_tracking.json   # 换成弯道
-python tools/demo.py --keep-online                              # 不断链，只看闭环
-python tools/demo.py --frames 20 --interval 500                 # 录得更密
+python tools/demo.py --only drop                 # 只跑第三段
+python tools/demo.py --drop-at 4                 # 第三段 4 秒断链
+python tools/demo.py --scenario scenarios/curve_tracking.json   # 退回单场景
+python tools/demo.py --frames 20 --interval 500  # 录得更密
+python tools/demo.py --rebuild                   # 复用上一轮的帧，只重排页面
 ```
 
 时序固定是刻意的：手工演示要掐两次时刻（算法进程什么时候接入、什么时候退出），
