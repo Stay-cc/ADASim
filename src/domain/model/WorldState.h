@@ -52,6 +52,14 @@ struct WorldState {
     int laneCount{2};
     double laneWidth{3.5};
     std::vector<EntityState> obstacles;
+    /// 运行时注入的虚拟目标（沙盒模式右键点出来那些）。
+    ///
+    /// 单列一份而不是塞进 obstacles，是整套"雷达欺骗"的关键：
+    /// 它们要被激光雷达扫到（进点云），但**不能**进 StatePacket.obstacles
+    /// ——算法若从真值列表里直接读到一个凭空出现的障碍，这次注入就变成了
+    /// "给答案"而不是"给观测"。只有走点云感知才能发现它，才谈得上闭环验证。
+    /// 它们也不参与物理推进与碰撞：注入的是"雷达看到的东西"，不是刚体。
+    std::vector<EntityState> ghosts;
 };
 
 }  // namespace adasim::domain

@@ -32,8 +32,17 @@ void SimController::reset(const domain::WorldState& initial) {
 }
 
 void SimController::start() {
+    // 从历史位置按播放 = 在此另起一支：截断该帧之后的时间线。
+    // 放在 start 而不是 previewSeek，是为了让拖拽回看保持无损。
+    truncateHere();
     running_ = true;
     lastWall_ = clock_.monotonicSeconds();
+}
+
+void SimController::truncateHere() {
+    if (current_.frameId < buffer_.latest()) {
+        buffer_.rewindTo(current_.frameId);
+    }
 }
 
 void SimController::pause() { running_ = false; }
@@ -103,7 +112,7 @@ void SimController::stepOnce() {
     publish();
 }
 
-bool SimController::seek(domain::FrameId target) {
+bool SimController::previewSeek(domain::FrameId target) {
     const auto plan = buffer_.planSeek(target);
     if (!plan.has_value()) {
         return false;
@@ -129,11 +138,59 @@ bool SimController::seek(domain::FrameId target) {
     current_ = state;
     accumulator_ = 0.0;
     lastWall_ = clock_.monotonicSeconds();
-
-    // 回溯即回退写指针：继续仿真会覆盖该帧之后的历史
-    buffer_.rewindTo(plan->targetFrame);
     snapshotDirty_ = true;
     return true;
+}
+
+bool SimController::seek(domain::FrameId target) {
+    if (!previewSeek(target)) {
+        return false;
+    }
+    // 回溯即回退写指针：继续仿真会覆盖该帧之后的历史
+    buffer_.rewindTo(target);
+    return true;
+}
+
+std::uint32_t SimController::injectGhost(double x, double y, double theta,
+                                         domain::EntityKind kind) {
+    domain::EntityState g;
+    g.id = nextGhostId_++;
+    g.kind = kind;
+    g.pose = domain::Pose{x, y, theta};
+    g.speed = 0.0;
+    switch (kind) {
+        case domain::EntityKind::Truck:
+            g.length = 9.0;
+            g.width = 2.5;
+            break;
+        case domain::EntityKind::Pedestrian:
+            g.length = 0.7;
+            g.width = 0.7;
+            break;
+        case domain::EntityKind::Cyclist:
+            g.length = 1.8;
+            g.width = 0.7;
+            break;
+        case domain::EntityKind::Car:
+        case domain::EntityKind::Unknown:
+        default:
+            g.length = 4.5;
+            g.width = 1.9;
+            break;
+    }
+    current_.ghosts.push_back(g);
+    // 注入只改当前帧之后的观测：已经录下来的帧不受影响，
+    // 拖回注入之前自然看不到它——这正是"注入发生在某一时刻"的语义。
+    snapshotDirty_ = true;
+    return g.id;
+}
+
+void SimController::clearGhosts() {
+    if (current_.ghosts.empty()) {
+        return;
+    }
+    current_.ghosts.clear();
+    snapshotDirty_ = true;
 }
 
 void SimController::buildSnapshotCache() {
@@ -160,6 +217,9 @@ void SimController::publish() {
     sp.ego = current_.ego;
     sp.egoSpeed = current_.egoSpeed;
     sp.curvature = current_.curvature;
+    // 只发真实参与者。注入目标（ghosts）刻意不发真值：
+    // 算法若能从真值列表里读到凭空出现的障碍，注入就变成了"给答案"，
+    // 测不出感知链路到底有没有在工作。它只能从点云里被聚类出来。
     sp.obstacles = current_.obstacles;
     transport_.publishState(sp);
 

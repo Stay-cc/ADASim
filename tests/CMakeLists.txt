@@ -15,7 +15,8 @@
 set(ADASIM_CPP_TESTS
     standby_guard_check
     cut_in_check
-    replay_check)
+    replay_check
+    sandbox_check)
 
 foreach(name ${ADASIM_CPP_TESTS})
     add_executable(${name} ${CMAKE_CURRENT_SOURCE_DIR}/${name}.cpp)

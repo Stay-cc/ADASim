@@ -43,21 +43,31 @@ public:
     /// 由装配根注入链路状态探针，避免表现层认识通信实现。
     void setLinkProbe(std::function<QString()> probe);
 
+    /// 算法进程是否在线（HUD 用）。与 linkProbe 分开：状态栏要的是可读文案，
+    /// HUD 要的是布尔量，硬从一个字符串里判"●"是把显示格式当契约。
+    void setAlgoOnlineProbe(std::function<bool()> probe);
+
     /// 启动时载入的场景文件；为空则使用内置的跟车场景。
     void loadScenarioFile(const QString& path);
 
 private:
     void buildUi();
     void wireSignals();
-    void applyLoadedScenario(const QString& path);
+    bool applyLoadedScenario(const QString& path);
     void refreshStatus();
+    /// 把滑块范围与取值同步到回放窗口（earliest..latest）。
+    void syncTimeline();
 
     void onTick();
     void onPlayPause();
     void onStep();
     void onSeek(int frame);
+    void onJumpLatest();
     void onSpeedChanged(int index);
     void onOpenScenario();
+    void onSandbox();
+    void onClearGhosts();
+    void onInjectAt(const QPoint& pos);
     void onRunExperiment();
 
     /// 把视口中心移到自车位置。跟随关闭时不做任何事。
@@ -79,6 +89,7 @@ private:
     QTimer* tick_{nullptr};
 
     std::function<QString()> linkProbe_;
+    std::function<bool()> algoOnlineProbe_;
     QString scenarioPath_;
 
     QAction* followAction_{nullptr};

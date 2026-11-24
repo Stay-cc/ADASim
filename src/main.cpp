@@ -63,6 +63,7 @@ int main(int argc, char** argv) {
         return gateway.linkAlive() ? QStringLiteral("算法进程 ● 在线")
                                    : QStringLiteral("算法进程 ○ 等待连接");
     });
+    window.setAlgoOnlineProbe([&gateway]() { return gateway.linkAlive(); });
 
     if (gateway.listen()) {
         logger.log(adasim::domain::LogLevel::Info,
@@ -97,6 +98,11 @@ int main(int argc, char** argv) {
     int recordFrames = 8;
     int recordIntervalMs = 1000;
     QString metricsPath;
+    // 无人值守时没法用鼠标右键，但"注入 → 点云 → 算法 → 制动"这条链路
+    // 必须能被自动验证与出图。--inject 就是给这条路留的入口，
+    // 与右键走的是同一个 SimController::injectGhost。
+    QStringList injectSpecs;
+    int injectDelayMs = 0;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -113,6 +119,10 @@ int main(int argc, char** argv) {
             recordIntervalMs = std::max(100, args.at(++i).toInt());
         } else if (a == QLatin1String("--metrics") && i + 1 < args.size()) {
             metricsPath = args.at(++i);
+        } else if (a == QLatin1String("--inject") && i + 1 < args.size()) {
+            injectSpecs.push_back(args.at(++i));
+        } else if (a == QLatin1String("--inject-delay") && i + 1 < args.size()) {
+            injectDelayMs = std::max(0, args.at(++i).toInt());
         } else if (!a.startsWith(QLatin1String("--"))) {
             scenarioPath = a;
         }
@@ -124,6 +134,41 @@ int main(int argc, char** argv) {
         // 若沿用相对路径，`adasim scenarios/x.json` 会被拼成
         // <场景目录>/scenarios/x.json 而加载失败，界面则静默退回默认场景。
         window.loadScenarioFile(QFileInfo(scenarioPath).absoluteFilePath());
+    }
+
+    if (!injectSpecs.isEmpty()) {
+        // 在指定延时后统一注入：放在 run 起来之后，注入才真的是"运行时"发生，
+        // 而不是场景初始化的一部分（后者会让前几帧的点云里已经有它）。
+        const QStringList specs = injectSpecs;
+        auto apply = [&sim, specs]() {
+            for (const QString& spec : specs) {
+                const QStringList parts = spec.split(QLatin1Char(','));
+                if (parts.size() < 2) {
+                    std::fprintf(stderr, "注入参数格式应为 x,y[,car|truck|ped]：%s\n",
+                                 spec.toLocal8Bit().constData());
+                    continue;
+                }
+                auto kind = adasim::domain::EntityKind::Car;
+                if (parts.size() >= 3) {
+                    const QString k = parts.at(2).trimmed().toLower();
+                    if (k == QLatin1String("truck")) {
+                        kind = adasim::domain::EntityKind::Truck;
+                    } else if (k == QLatin1String("ped") || k == QLatin1String("pedestrian")) {
+                        kind = adasim::domain::EntityKind::Pedestrian;
+                    }
+                }
+                const std::uint32_t id = sim.injectGhost(
+                    parts.at(0).toDouble(), parts.at(1).toDouble(),
+                    sim.current().ego.theta, kind);
+                std::fprintf(stdout, "已注入目标 #%u @ (%s)\n", id,
+                             spec.toLocal8Bit().constData());
+            }
+        };
+        if (injectDelayMs <= 0) {
+            apply();
+        } else {
+            QTimer::singleShot(injectDelayMs, &window, apply);
+        }
     }
 
     if (!shotPath.isEmpty()) {
@@ -154,7 +199,9 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "无法写入时序文件: %s\n",
                          metricsPath.toLocal8Bit().constData());
         } else {
-            metrics << "t,x,speed,gap,standby,link,frame\n";
+            // ghosts 单列一列：注入的目标不进真值，gap 那列看不到它们，
+            // 没有这一列就无法从时序上判断"车停下是因为有注入目标"。
+            metrics << "t,x,speed,gap,standby,link,ghosts,frame\n";
             auto* sampler = new QTimer(&qtApp);
             QObject::connect(sampler, &QTimer::timeout, &window,
                              [&sim, &gateway, &metrics]() {
@@ -167,7 +214,8 @@ int main(int argc, char** argv) {
                 metrics << s.simTime << ',' << s.ego.x << ',' << s.egoSpeed << ','
                         << (gap.valid ? gap.bumperGap : -1.0) << ','
                         << (sim.standbyGuardActive() ? 1 : 0) << ','
-                        << (gateway.linkAlive() ? 1 : 0) << ',' << s.frameId
+                        << (gateway.linkAlive() ? 1 : 0) << ','
+                        << sim.ghostCount() << ',' << s.frameId
                         << '\n';
             });
             sampler->start(100);

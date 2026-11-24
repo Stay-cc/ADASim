@@ -136,24 +136,30 @@ def parse_state(payload: bytes) -> StateFrame | None:
 
 
 def encode_command(seq: int, frame: int, sim_time: float,
-                   steer: float, speed: float, accel: float) -> bytes:
+                   steer: float, speed: float, accel: float,
+                   reason: str = "", rtt_ms: float | None = None) -> bytes:
     """编码一帧控制指令：长度前缀 + 紧凑 JSON。
 
     字段名必须与 `TcpUdpGateway::handlePayload` 读取的键一致：
-    type / seq / frame / t / steer / speed / accel。
+    type / seq / frame / t / steer / speed / accel，外加两个可选的
+    reason（决策原因）与 rtt（本端实测往返时延）。两个都是给 HUD 显示用的，
+    底座不据此改变任何控制行为——若 reason 参与了控制，"算法说自己在跟驰"
+    就会变成既能改显示又能改行为的两面量。
     """
-    payload = json.dumps(
-        {
-            "type": "cmd",
-            "seq": int(seq),
-            "frame": int(frame),
-            "t": float(sim_time),
-            "steer": float(steer),
-            "speed": float(speed),
-            "accel": float(accel),
-        },
-        separators=(",", ":"),
-    ).encode("utf-8")
+    body = {
+        "type": "cmd",
+        "seq": int(seq),
+        "frame": int(frame),
+        "t": float(sim_time),
+        "steer": float(steer),
+        "speed": float(speed),
+        "accel": float(accel),
+    }
+    if reason:
+        body["reason"] = str(reason)
+    if rtt_ms is not None and rtt_ms >= 0.0:
+        body["rtt"] = float(rtt_ms)
+    payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
     if len(payload) > MAX_PAYLOAD:
         raise ValueError(f"指令报文超过上限：{len(payload)} 字节")
     return TCP_LENGTH.pack(len(payload)) + payload

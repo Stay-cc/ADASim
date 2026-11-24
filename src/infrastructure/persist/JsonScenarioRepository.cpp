@@ -89,6 +89,7 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
         tmpl.egoPose.y = num(e, "y", 0.0);
         tmpl.egoPose.theta = num(e, "theta", 0.0);
     }
+    tmpl.openWorld = root.value(QStringLiteral("openWorld")).toBool(false);
 
     // sensor 块可缺省：缺省即传感器默认参数，老场景文件不必改。
     if (root.value(QStringLiteral("sensor")).isObject()) {
@@ -165,6 +166,9 @@ bool JsonScenarioRepository::save(const std::string& path,
     root.insert(QStringLiteral("visibility"), tmpl.visibility);
     root.insert(QStringLiteral("durationSeconds"), tmpl.durationSeconds);
     root.insert(QStringLiteral("egoSpeed"), tmpl.egoSpeed);
+    if (tmpl.openWorld) {
+        root.insert(QStringLiteral("openWorld"), true);
+    }
 
     QJsonObject sensor;
     sensor.insert(QStringLiteral("lidarRange"), tmpl.sensor.lidarRange);

@@ -291,8 +291,11 @@ void TcpUdpGateway::handlePayload(const QByteArray& payload) {
         obj.value(QStringLiteral("frame")).toVariant().toLongLong());
     cmd.simTime = obj.value(QStringLiteral("t")).toDouble();
     cmd.steer = obj.value(QStringLiteral("steer")).toDouble();
-    cmd.targetSpeed = obj.value(QStringLiteral("speed")).toDouble();
-    cmd.targetAccel = obj.value(QStringLiteral("accel")).toDouble();
+    cmd.targetSpeed = static_cast<double>(obj.value(QStringLiteral("speed")).toDouble());
+    cmd.targetAccel = static_cast<double>(obj.value(QStringLiteral("accel")).toDouble());
+    // 可选字段：老版本算法进程不发这两个键，缺省即"未上报"，不影响控制。
+    cmd.reason = obj.value(QStringLiteral("reason")).toString().toStdString();
+    cmd.algoRttMs = obj.value(QStringLiteral("rtt")).toDouble(-1.0);
 
     {
         std::lock_guard<std::mutex> guard(queueMutex_);

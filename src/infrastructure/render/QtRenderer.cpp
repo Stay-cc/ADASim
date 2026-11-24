@@ -32,6 +32,7 @@ constexpr QRgb kEgoFill = qRgb(210, 72, 72);
 constexpr QRgb kEgoEdge = qRgb(255, 168, 168);
 constexpr QRgb kObstacleFill = qRgb(72, 104, 152);
 constexpr QRgb kObstacleEdge = qRgb(140, 176, 220);
+constexpr QRgb kGhostEdge = qRgb(232, 162, 66);
 
 inline QRgb colorForIntensity(float k) {
     if (k < 0.35f) return kCloudPalette[0];
@@ -246,6 +247,38 @@ void QtRenderer::rasterize(const domain::WorldSnapshot& snap, const domain::View
             // 车头朝向：一条指向 +x 的短线，便于在缩小时仍能看出方向。
             painter.setPen(QPen(QColor(kObstacleEdge), 1.5));
             painter.drawLine(QPointF(wPx * 0.5, 0.0), QPointF(wPx * 0.35, -hPx * 0.3));
+            painter.restore();
+        }
+    }
+
+    // ---- 2.5 注入目标（雷达欺骗）----
+    // 用虚线 + 半透明填充，与实体车区分开：它不是刚体，物理世界并不存在，
+    // 只有雷达能看见。画成实心的话，观众会以为"车真的撞上了"。
+    if (!snap.state.ghosts.empty()) {
+        QPainter painter(&canvas_);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        for (const auto& g : snap.state.ghosts) {
+            double px = 0.0;
+            double py = 0.0;
+            toPx(g.pose.x, g.pose.y, px, py);
+
+            painter.save();
+            painter.translate(px, py);
+            painter.rotate(-g.pose.theta * 180.0 / kPi);
+
+            const double wPx = g.length / mpp;
+            const double hPx = g.width / mpp;
+            const QRectF box(-wPx * 0.5, -hPx * 0.5, wPx, hPx);
+            painter.setBrush(QColor(232, 162, 66, 38));
+            QPen pen(QColor(kGhostEdge), 1.4, Qt::DashLine);
+            pen.setDashPattern({4.0, 3.0});
+            painter.setPen(pen);
+            painter.drawRect(box);
+
+            // 打一个叉：一眼看出这是"标记"而不是一台车
+            painter.drawLine(box.topLeft(), box.bottomRight());
+            painter.drawLine(box.bottomLeft(), box.topRight());
             painter.restore();
         }
     }

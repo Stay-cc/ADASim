@@ -1,0 +1,18 @@
+{
+  "id": "sandbox",
+  "name": "无尽沙盒（运行时注入）",
+  "laneCount": 3,
+  "laneWidth": 3.5,
+  "curvature": 0.0,
+  "friction": 0.9,
+  "visibility": 1.0,
+  "durationSeconds": 86400.0,
+  "egoSpeed": 10.0,
+  "openWorld": true,
+  "sensor": {
+    "lidarRange": 60.0,
+    "lidarPointsPerMeter": 2.0
+  },
+  "actors": [],
+  "parameters": []
+}

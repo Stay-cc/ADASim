@@ -85,6 +85,10 @@ class AlgoNode:
         # 通信时延：seq → 发出时刻。只保留最近 256 条，避免长跑时无界增长。
         self._send_times: dict[int, float] = {}
         self.rtt_ms: list[float] = []
+        # 帧周期实测值（EMA）。净时延要减掉一个周期，而这个周期不该写死 20 ms：
+        # 底座改步长或改发布频率时，写死的那份会静默算错。
+        self._period_ms = 20.0
+        self._prev_sim_time: float | None = None
 
         # 异常诊断：只在首次出现时各打印一条，避免刷屏。
         # 这两类异常（速度尖峰、零车距）是感知链路最典型的失效表现，
@@ -243,6 +247,12 @@ class AlgoNode:
             self.planner.reset()
         self._last_frame = state.frame
 
+        if self._prev_sim_time is not None:
+            span = state.sim_time - self._prev_sim_time
+            if 0.0 < span < 0.5:      # 回溯时 sim_time 会倒退，跳过
+                self._period_ms = 0.8 * self._period_ms + 0.2 * span * 1000.0
+        self._prev_sim_time = state.sim_time
+
         begin = time.perf_counter()
 
         if self.use_truth:
@@ -313,7 +323,25 @@ class AlgoNode:
         self._outbuf += encode_command(
             self._seq, state.frame, state.sim_time,
             plan.steer, plan.target_speed, plan.accel,
+            reason=plan.reason,
+            # 回传本端实测的往返时延均值，供底座 HUD 显示。底座测不到这个量
+            # （它不知道指令在对端被处理了多久），只能由这里带回去。
+            # 用均值而不是最近一个样本：逐样本是 20±12 ms 的跳变，
+            # HUD 上闪个不停会让人以为网络在抽风，均值才反映链路水平。
+            # 注意它天然含一个帧周期（ackSeq 随状态帧回带），净时延见算法汇总。
+            rtt_ms=self._mean_rtt_ms(),
         )
+
+    def _mean_rtt_ms(self) -> float | None:
+        """往返时延均值，ms。
+
+        这里不扣帧周期：HUD 要显示的是"链路上真实发生的往返"，扣掉之后
+        环回场景会常年显示 0.x ms，即使加载到链路打满也看不出变化。
+        净时延（扣周期）在汇总里单独给出，两者口径不同，不该混成一个数。
+        """
+        if not self.rtt_ms:
+            return None
+        return sum(self.rtt_ms) / len(self.rtt_ms)
 
     def _flush(self) -> None:
         while self._outbuf:

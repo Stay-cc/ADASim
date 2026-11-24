@@ -41,11 +41,39 @@ public:
     /// 成功后写指针回退，后续仿真将覆盖该帧之后的记录。
     bool seek(domain::FrameId target);
 
+    /// 只读回看：把状态还原到 target，但**不**丢弃其后的历史。
+    ///
+    /// 行车记录仪的拖拽需要来回看，每次都截断的话往回拖一段之后
+    /// 再往右拖就再也没有数据了。截断推迟到真正恢复播放时（start）才发生，
+    /// 这时的语义是"从这里另起一支"，而那正是用户按下播放的意图。
+    bool previewSeek(domain::FrameId target);
+
+    /// 在此截断历史：丢弃当前帧之后的记录。单步与恢复播放前都要调它，
+    /// 否则 append 会落在旧的写指针上，新帧的帧号直接跳到时间轴末尾。
+    void truncateHere();
+
+    /// 窗口内最旧的帧号。滑块下限，历史被环形缓冲覆盖后会前移。
+    [[nodiscard]] domain::FrameId windowStart() const noexcept { return buffer_.earliest(); }
+
+    /// 最近一次被采纳的控制指令。HUD 用它显示算法输出（加速度/转角/决策）。
+    [[nodiscard]] const domain::ControlCommand& lastCommand() const noexcept {
+        return lastCommand_;
+    }
+
+    /// 注入一个虚拟目标：进点云、不进真值、不参与碰撞。返回其 id。
+    std::uint32_t injectGhost(double x, double y, double theta, domain::EntityKind kind);
+    void clearGhosts();
+    [[nodiscard]] std::size_t ghostCount() const noexcept { return current_.ghosts.size(); }
+
     void setSpeedFactor(double factor);
     [[nodiscard]] double speedFactor() const noexcept { return speedFactor_; }
 
     [[nodiscard]] const domain::WorldState& current() const noexcept { return current_; }
+    /// 当前所在帧（回看时是历史帧）。
     [[nodiscard]] domain::FrameId latestFrame() const noexcept { return current_.frameId; }
+    /// 已录到的最后一帧。回看时它与 latestFrame 不同——
+    /// 进度条上限必须取这个，否则往回拖一次，滑块的可拖范围就塌到当前位置了。
+    [[nodiscard]] domain::FrameId bufferLatest() const noexcept { return buffer_.latest(); }
 
     /// 构造（或复用）只读快照，供渲染端口消费。
     std::shared_ptr<const domain::WorldSnapshot> snapshot();
@@ -86,6 +114,7 @@ private:
     double lastWall_{0.0};
     bool snapshotDirty_{true};
     bool running_{false};
+    std::uint32_t nextGhostId_{900000};   ///< 与场景参与者 id 分开，便于日志里一眼认出
 };
 
 }  // namespace adasim::app

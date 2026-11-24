@@ -69,6 +69,13 @@ struct ScenarioTemplate {
     SensorSpec sensor{};
     std::vector<ActorSpec> actors;
     std::vector<ParameterSpec> parameters;
+
+    /// 开放世界（无尽沙盒）：没有预设参与者与结束时刻，交通由用户运行时注入。
+    ///
+    /// 它只做一件事——让"空场景"成为合法场景。校验里那条"至少需要一个
+    /// 交通参与者"是防手写场景漏配的，沙盒恰恰要从零开始，所以按这个标志放行。
+    /// 但不可放宽为无条件允许空 actors：那样普通场景写漏 actors 就查不出来了。
+    bool openWorld{false};
 };
 
 }  // namespace adasim::domain

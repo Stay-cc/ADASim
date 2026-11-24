@@ -1,13 +1,17 @@
 #include "presentation/MainWindow.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSlider>
 #include <QStatusBar>
 #include <QTimer>
@@ -123,6 +127,16 @@ void MainWindow::buildUi() {
 
     toolbar->addSeparator();
 
+    auto* sandboxAction = toolbar->addAction(QStringLiteral("沙盒"));
+    sandboxAction->setToolTip(QStringLiteral("无尽沙盒：空路面，右键点哪就在哪注入一个目标"));
+    connect(sandboxAction, &QAction::triggered, this, &MainWindow::onSandbox);
+
+    auto* clearAction = toolbar->addAction(QStringLiteral("清除注入"));
+    clearAction->setToolTip(QStringLiteral("移除当前所有注入目标"));
+    connect(clearAction, &QAction::triggered, this, &MainWindow::onClearGhosts);
+
+    toolbar->addSeparator();
+
     // 默认跟随自车：视口初始中心在原点，而自车 10 s 就能开出上百米，
     // 不跟随的话跑几秒后画面里只剩网格——这对演示与论文配图都是致命的。
     // 一旦用户拖拽或滚轮调整，就自动取消跟随，避免"手一松就被拉回去"。
@@ -138,11 +152,25 @@ void MainWindow::buildUi() {
     view_ = new ViewportWidget(central);
     layout->addWidget(view_, 1);
 
-    timeline_ = new QSlider(Qt::Horizontal, central);
+    // 进度条按帧号取值：滑块值就是 FrameId，不必在"百分比 ↔ 帧"之间来回换算，
+    // 也不会因为窗口滑动导致映射漂移。
+    auto* timelineRow = new QWidget(central);
+    auto* timelineLayout = new QHBoxLayout(timelineRow);
+    timelineLayout->setContentsMargins(6, 0, 6, 4);
+    timelineLayout->setSpacing(6);
+
+    timeline_ = new QSlider(Qt::Horizontal, timelineRow);
     timeline_->setRange(0, 0);
     timeline_->setSingleStep(1);
     timeline_->setPageStep(25);
-    layout->addWidget(timeline_);
+    timeline_->setToolTip(QStringLiteral("拖动回看历史；回看不销毁记录，按播放才从当前位置另起一支"));
+    timelineLayout->addWidget(timeline_, 1);
+
+    auto* latestButton = new QPushButton(QStringLiteral("回到最新"), timelineRow);
+    connect(latestButton, &QPushButton::clicked, this, &MainWindow::onJumpLatest);
+    timelineLayout->addWidget(latestButton);
+
+    layout->addWidget(timelineRow);
 
     setCentralWidget(central);
 
@@ -175,6 +203,8 @@ void MainWindow::wireSignals() {
         }
     });
 
+    connect(view_, &ViewportWidget::rightClicked, this, &MainWindow::onInjectAt);
+
     connect(&renderer_, &infra::QtRenderer::frameReady, this,
             [this](const QImage& image) { view_->setImage(image); });
 
@@ -185,9 +215,12 @@ void MainWindow::wireSignals() {
                 ++framesThisSecond_;
             });
 
-    // 拖动时只暂停不回溯，松手后才 seek：否则每移动一像素就重推演一次，
-    // 长窗口下会把界面拖到卡死。
-    connect(timeline_, &QSlider::sliderPressed, this, [this]() { userSeeking_ = true; });
+    // 拖拽即回看：按下暂停、边走边定位。走的是 previewSeek（无损），
+    // 所以来回拖不会把历史抹掉；真正截断留到用户按播放的那一刻。
+    connect(timeline_, &QSlider::sliderPressed, this, [this]() {
+        userSeeking_ = true;
+        sim_.pause();
+    });
     connect(timeline_, &QSlider::sliderReleased, this, [this]() {
         userSeeking_ = false;
         onSeek(timeline_->value());
@@ -203,17 +236,21 @@ void MainWindow::setLinkProbe(std::function<QString()> probe) {
     linkProbe_ = std::move(probe);
 }
 
+void MainWindow::setAlgoOnlineProbe(std::function<bool()> probe) {
+    algoOnlineProbe_ = std::move(probe);
+}
+
 void MainWindow::loadScenarioFile(const QString& path) {
     scenarioPath_ = path;
     applyLoadedScenario(path);
 }
 
-void MainWindow::applyLoadedScenario(const QString& path) {
+bool MainWindow::applyLoadedScenario(const QString& path) {
     const auto tmpl = scenarios_.load(path.toStdString());
     if (!tmpl.has_value()) {
         QMessageBox::warning(this, QStringLiteral("载入失败"),
                              QStringLiteral("无法读取场景文件：\n%1").arg(path));
-        return;
+        return false;
     }
 
     // 语义校验放在这里而不是 JSON 层：车距为负、触发时刻超出时长这类问题
@@ -225,7 +262,7 @@ void MainWindow::applyLoadedScenario(const QString& path) {
             text += QStringLiteral("· ") + QString::fromStdString(p) + QLatin1Char('\n');
         }
         QMessageBox::warning(this, QStringLiteral("场景校验"), text);
-        return;
+        return false;
     }
 
     domain::LidarParams lidar;
@@ -239,7 +276,9 @@ void MainWindow::applyLoadedScenario(const QString& path) {
     timeline_->setValue(0);
     renderer_.submit(sim_.snapshot());
     renderer_.requestFrame();
+    syncTimeline();
     refreshStatus();
+    return true;
 }
 
 void MainWindow::onTick() {
@@ -252,12 +291,7 @@ void MainWindow::onTick() {
         centerOnEgo();
 
         if (!userSeeking_) {
-            const int latest = static_cast<int>(std::min<domain::FrameId>(
-                sim_.latestFrame(), static_cast<domain::FrameId>(INT_MAX)));
-            if (timeline_->maximum() != latest) {
-                timeline_->setRange(0, latest);
-            }
-            timeline_->setValue(latest);
+            syncTimeline();
         }
     }
 
@@ -303,6 +337,31 @@ void MainWindow::refreshStatus() {
     } else {
         linkLabel_->setText(QStringLiteral("未启用通信"));
     }
+
+    // HUD 每拍都刷新：它显示的是"现在这一帧"的读数，不是某个历史快照的。
+    // 暂停时也要刷——否则停在历史帧上时，画面上还挂着最后一个实时读数。
+    HudState hud;
+    hud.paused = !sim_.running();
+    hud.speedMps = sim_.current().egoSpeed;
+    hud.simTime = sim_.current().simTime;
+    hud.fps = fps_;
+    hud.renderMs = renderMs_;
+    hud.pointCount = pointCount_;
+    hud.ghostCount = static_cast<int>(sim_.ghostCount());
+    hud.algoOnline = algoOnlineProbe_ ? algoOnlineProbe_() : false;
+
+    const auto& cmd = sim_.lastCommand();
+    if (cmd.seq > 0) {
+        hud.rttMs = cmd.algoRttMs;
+        hud.accel = cmd.targetAccel;
+        hud.steer = cmd.steer;
+        hud.reason = QString::fromStdString(cmd.reason);
+        const domain::FrameId latest = sim_.bufferLatest();
+        hud.cmdAgeFrames = cmd.echoFrameId <= latest
+                               ? static_cast<int>(latest - cmd.echoFrameId)
+                               : -1;
+    }
+    view_->setHud(hud);
 }
 
 void MainWindow::onPlayPause() {
@@ -314,13 +373,14 @@ void MainWindow::onPlayPause() {
 
 void MainWindow::onStep() {
     sim_.pause();
+    // 停在历史帧上单步：先截断，否则新帧会被追加到旧写指针处，
+    // 帧号一下跳到时间轴末尾，看起来像"单步把车瞬移了"。
+    sim_.truncateHere();
     sim_.stepOnce();
     renderer_.submit(sim_.snapshot());
     renderer_.requestFrame();
 
-    const int latest = static_cast<int>(sim_.latestFrame());
-    timeline_->setRange(0, latest);
-    timeline_->setValue(latest);
+    syncTimeline();
     refreshStatus();
 }
 
@@ -328,12 +388,78 @@ void MainWindow::onSeek(int frame) {
     if (frame < 0) {
         return;
     }
+    // 用 previewSeek 而不是 seek：回看是无损的，来回拖不会把后面的记录吃掉。
+    // 截断由 SimController::start() 在真正恢复播放时执行。
     sim_.pause();
-    if (sim_.seek(static_cast<domain::FrameId>(frame))) {
+    if (sim_.previewSeek(static_cast<domain::FrameId>(frame))) {
         renderer_.submit(sim_.snapshot());
         renderer_.requestFrame();
     }
     refreshStatus();
+}
+
+void MainWindow::syncTimeline() {
+    // 下限跟着环形缓冲的窗口起点走：历史被覆盖后，滑块不应还能拖到已不存在的帧。
+    const auto clampInt = [](domain::FrameId v) {
+        return static_cast<int>(std::min<domain::FrameId>(v, static_cast<domain::FrameId>(INT_MAX)));
+    };
+    const int earliest = clampInt(sim_.windowStart());
+    // 上限用"已录到的最后一帧"，不是当前帧：回看时当前帧在后面，
+    // 拿它当上限会让滑块自己缩回去，再也拖不回刚才看的位置。
+    const int latest = clampInt(sim_.bufferLatest());
+    if (timeline_->minimum() != earliest || timeline_->maximum() != latest) {
+        timeline_->setRange(earliest, latest);
+    }
+    timeline_->setValue(latest);
+}
+
+void MainWindow::onJumpLatest() {
+    const domain::FrameId latest = sim_.bufferLatest();
+    if (sim_.previewSeek(latest)) {
+        renderer_.submit(sim_.snapshot());
+        renderer_.requestFrame();
+    }
+    syncTimeline();
+    refreshStatus();
+}
+
+void MainWindow::onInjectAt(const QPoint& pos) {
+    if (view_ == nullptr) {
+        return;
+    }
+    const QPointF world = view_->pixelToWorld(pos);
+
+    // 修饰键选类型：默认轿车，Shift 卡车，Ctrl 行人。
+    domain::EntityKind kind = domain::EntityKind::Car;
+    const Qt::KeyboardModifiers mods = QApplication::keyboardModifiers();
+    if (mods & Qt::ShiftModifier) {
+        kind = domain::EntityKind::Truck;
+    } else if (mods & Qt::ControlModifier) {
+        kind = domain::EntityKind::Pedestrian;
+    }
+
+    // 朝向取自车航向：在弯道上右键时，注入的车应当顺着路走而不是横在路中间。
+    sim_.injectGhost(world.x(), world.y(), sim_.current().ego.theta, kind);
+    renderer_.submit(sim_.snapshot());
+    renderer_.requestFrame();
+    refreshStatus();
+}
+
+void MainWindow::onClearGhosts() {
+    sim_.clearGhosts();
+    renderer_.submit(sim_.snapshot());
+    renderer_.requestFrame();
+    refreshStatus();
+}
+
+void MainWindow::onSandbox() {
+    // 沙盒走场景文件而不是内置模板：场地参数（车道数、雷达量程）应当和别的场景
+    // 一样可改可版本化，写死在代码里就只能重编译。
+    const QString path = QDir(QCoreApplication::applicationDirPath())
+                             .absoluteFilePath(QStringLiteral("../scenarios/sandbox.json"));
+    if (applyLoadedScenario(path)) {
+        sim_.start();   // 沙盒载入即跑，不必再按一次播放
+    }
 }
 
 void MainWindow::onSpeedChanged(int index) {

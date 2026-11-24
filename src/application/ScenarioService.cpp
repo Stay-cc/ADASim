@@ -85,7 +85,7 @@ std::vector<std::string> ScenarioService::validate(const domain::ScenarioTemplat
     if (tmpl.sensor.lidarPointsPerMeter <= 0.0 || tmpl.sensor.lidarPointsPerMeter > 100.0) {
         issues.emplace_back("点云采样密度应在 (0, 100] 点/米");
     }
-    if (tmpl.actors.empty()) {
+    if (tmpl.actors.empty() && !tmpl.openWorld) {
         issues.emplace_back("场景至少需要一个交通参与者");
     }
 
