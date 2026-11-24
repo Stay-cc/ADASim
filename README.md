@@ -67,10 +67,29 @@ cmake --build build/core
 | `adasim_bench` | 点云/渲染压测，输出帧时间分位数 |
 | `adasim_batch` | 常驻评估服务，行式 JSON 进、行式指标出（供 AI 搜索调用） |
 
+### 2.1 Windows
+
+`.exe` 后缀之外，唯一要注意的是 **Qt 的 `bin` 必须在 `PATH` 里**，否则双击报
+「找不到 Qt6Widgets.dll」（明明编译过了）。当前会话加一次即可：
+
+```powershell
+$env:PATH = "D:\Qt\6.12.0\mingw_64\bin;D:\Qt\Tools\mingw1310_64\bin;$env:PATH"
+```
+
+两台构建（`build/qt` 有界面、`build/core` 无 Qt）可以并存，`core` 的产物不依赖任何 Qt DLL。
+
 ## 3 跑起来
 
+想先确认"装好了没有"，跑这一条就够——它不需要 Qt、也不需要另开终端：
+
 ```bash
-# 1. 起底座（需要 Qt 的 bin 在 PATH 里）
+./build/core/bin/adasim_headless        # 内置 30 s 闭环 + 回溯一致性自检，1 秒内出结果
+```
+
+真正的仿真要两个进程，先起底座再起算法（底座是服务端，先起先监听）：
+
+```bash
+# 1. 起底座（需要 Qt 的 bin 在 PATH 里；Windows 带 .exe）
 ./build/qt/bin/adasim
 
 # 2. 另开一个终端起算法进程
@@ -78,6 +97,9 @@ python python/run.py                 # 持续运行
 python python/run.py --duration 20   # 跑 20 秒后退出并打印汇总
 python python/run.py --truth         # 跳过感知，直接用真值（对照实验）
 ```
+
+Python 侧是**纯标准库**（连 numpy 都不需要），装了 Python ≥ 3.10 就能跑；
+没装也能用 `adasim_headless` 验证底座本身。
 
 底座命令行：
 
