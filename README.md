@@ -264,4 +264,5 @@ python ai/search.py --scenario ai/presets/cut_in_brake.json --budget 100
 | `docs/性能压测报告.md` | 点云规模扫描、帧时间分位数、瓶颈定位 |
 | `docs/AI增强模块设计.md` | 场景生成 schema、校验策略、GP 搜索与加速 |
 | `docs/横向对比.md` | 与 CARLA / SUMO / PreScan / highway-env / CommonRoad 的能力与部署对比 |
+| `docs/论文/` | 学位论文正文：`README.md` 是大纲与素材映射，其余按章存放 |
 | `scenarios/README.md` | 场景索引：每个场景服务哪组实验、关键参数含义 |
