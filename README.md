@@ -82,6 +82,7 @@ python python/run.py --truth         # 跳过感知，直接用真值（对照�
 
 ```bash
 adasim scenarios/curve_tracking.json          # 指定场景启动
+adasim scenarios/sandbox.json                 # 无尽沙盒：空路面，右键注入目标
 adasim --shot out.png --shot-delay 8000       # 跑 8 秒截图退出，用于无人值守取图
 adasim --record out/frames --frames 16 --interval 700 \
        --metrics out/timeseries.csv           # 连续录帧 + 100 ms 采样（Demo 用）
@@ -89,6 +90,37 @@ adasim --record out/frames --frames 16 --interval 700 \
 
 算法进程汇总会给出：状态帧/指令帧数、平均点数、平均计算耗时、最小车距、
 最小 TTC、决策分布，以及横向/航向/速度误差 RMS（`--warmup` 之后开始统计）。
+
+### 3.0 无尽沙盒与运行时注障
+
+工具栏点「沙盒」进入空路面（`scenarios/sandbox.json`，`openWorld`），**右键点视口任意位置**
+就在那里注入一个虚拟目标：默认轿车，按住 Shift 是卡车、Ctrl 是行人。工具栏「清除注入」一键清空。
+
+这套东西的要点不是"多画一个障碍"，而是**雷达欺骗**：注入的目标
+
+- 会进激光雷达的点云（轮廓点与真实障碍物同一条采样公式、同一条距离衰减）；
+- **不会**进 `StatePacket.obstacles`（真值列表），也不参与物理推进与碰撞。
+
+于是算法只能从点云里把它聚类出来——测的是感知链路，而不是给它一个答案。算法在线时车会
+减速停住；算法离线时兜底律看不到它（兜底按真值算车距），车会直接从虚线框上开过去。
+后一种表现是设计使然，也正好是演示时最有说服力的一组对照。
+
+无人值守时用命令行注同样的目标（与右键走同一条 `SimController::injectGhost`）：
+
+```bash
+adasim scenarios/sandbox.json --inject "50,0"             # 自车前方 50 m 注入一辆车
+adasim scenarios/sandbox.json --inject "40,-3.5,truck" --inject-delay 2500   # 2.5 秒后注入到邻道
+```
+
+### 3.0.1 回放与 HUD
+
+- 底部进度条按帧号取值，**拖拽即回看**、随时暂停。回看不销毁记录（`previewSeek`），
+  按播放才从当前位置另起一支（`start()` 截断）。「回到最新」跳回录制末尾。
+- 左上角 HUD 实时显示：车速（km/h）、帧率与光栅化耗时、往返时延与指令龄、
+  算法在线状态与输出（`a`、`δ`、决策原因）、注入目标数与点云数。
+  时延由算法进程回传（底座测不到对端处理耗时），带的是均值：它天然含一个帧周期
+  （`ackSeq` 随状态帧回带），净时延（扣掉周期）在算法汇总里单独给出。
+
 
 ### 3.1 一条命令跑通 Demo
 
