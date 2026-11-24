@@ -206,7 +206,13 @@ void MainWindow::wireSignals() {
     connect(view_, &ViewportWidget::rightClicked, this, &MainWindow::onInjectAt);
 
     connect(&renderer_, &infra::QtRenderer::frameReady, this,
-            [this](const QImage& image) { view_->setImage(image); });
+            [this](const QImage& image) {
+                view_->setImage(image);
+                if (!firstFrameSeen_) {
+                    firstFrameSeen_ = true;
+                    emit firstFrameReady();
+                }
+            });
 
     connect(&renderer_, &infra::QtRenderer::frameStats, this,
             [this](double millis, int points) {

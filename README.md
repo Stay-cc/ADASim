@@ -7,6 +7,7 @@ Python 写算法进程（感知、决策、控制），两者走自定义 TCP/UD
 任何一帧都能在毫秒级回溯到当时的完整世界状态，任何一次失效都能被重新跑出来。
 
 - 十万点云 720p 渲染 P99 = 5.99 ms（实测，见 `docs/实验报告.md`）
+- 冷启动到首帧 293 ms，部署目录 39 MB（实测，见 `docs/横向对比.md`）
 - 任意目标帧回溯位姿偏差 0.000e+00（逐位一致，见 `tests/replay_check.cpp`）
 - 断线兜底：算法进程失联后底座自行降速停车，不追尾
 
@@ -262,4 +263,5 @@ python ai/search.py --scenario ai/presets/cut_in_brake.json --budget 100
 | `docs/实验报告.md` | 五组实验的原始数据、统计口径、与开题指标的对照 |
 | `docs/性能压测报告.md` | 点云规模扫描、帧时间分位数、瓶颈定位 |
 | `docs/AI增强模块设计.md` | 场景生成 schema、校验策略、GP 搜索与加速 |
+| `docs/横向对比.md` | 与 CARLA / SUMO / PreScan / highway-env / CommonRoad 的能力与部署对比 |
 | `scenarios/README.md` | 场景索引：每个场景服务哪组实验、关键参数含义 |

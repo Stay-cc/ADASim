@@ -6,6 +6,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <functional>
@@ -31,6 +32,11 @@
 /// 所以把 Qt 换成别的渲染后端、把 TCP 换成共享内存，
 /// 改动都被限制在这一个函数体内。
 int main(int argc, char** argv) {
+    // 冷启动的起点必须在这里取：放进 QApplication 之后就漏掉了 Qt 自身的
+    // 平台初始化（Windows 上就是几百毫秒），而这恰恰是对比 CARLA 类重型
+    // 平台时最关心的一项。用 steady_clock 而不是 wall clock——后者会跳。
+    const auto coldStartAt = std::chrono::steady_clock::now();
+
     QApplication qtApp(argc, argv);
     QApplication::setApplicationName(QStringLiteral("ADASim"));
 
@@ -76,6 +82,19 @@ int main(int argc, char** argv) {
     }
 
     window.show();
+
+    // 冷启动指标：从进程入口到首帧贴图的墙钟时间，直接打一行。
+    // 不做成"每次运行都显示在 HUD 上"——它只对首次有意义，
+    // 常驻反而占掉 HUD 一行。
+    QObject::connect(&window, &adasim::ui::MainWindow::firstFrameReady, &window,
+                     [coldStartAt]() {
+                         const double ms =
+                             std::chrono::duration<double, std::milli>(
+                                 std::chrono::steady_clock::now() - coldStartAt)
+                                 .count();
+                         std::fprintf(stdout, "首帧就绪: %.0f ms\n", ms);
+                         std::fflush(stdout);
+                     });
 
     // 命令行参数：
     //   adasim [场景文件]                正常启动

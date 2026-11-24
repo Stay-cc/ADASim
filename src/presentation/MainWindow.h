@@ -50,6 +50,12 @@ public:
     /// 启动时载入的场景文件；为空则使用内置的跟车场景。
     void loadScenarioFile(const QString& path);
 
+signals:
+    /// 第一帧真正贴到控件上时发一次。
+    /// 冷启动时间必须量到这一帧：窗口 show() 之后到首帧之间还有场景加载、
+    /// 首帧光栅化与一次跨线程回传，只记"进程起来了"会把这几百毫秒漏掉。
+    void firstFrameReady();
+
 private:
     void buildUi();
     void wireSignals();
@@ -95,6 +101,7 @@ private:
     QAction* followAction_{nullptr};
 
     bool userSeeking_{false};
+    bool firstFrameSeen_{false};
     double renderMs_{0.0};
     int pointCount_{0};
     int framesThisSecond_{0};
