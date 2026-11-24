@@ -238,12 +238,13 @@ void MainWindow::wireSignals() {
     });
 }
 
-void MainWindow::setLinkProbe(std::function<QString()> probe) {
-    linkProbe_ = std::move(probe);
-}
-
 void MainWindow::setAlgoOnlineProbe(std::function<bool()> probe) {
     algoOnlineProbe_ = std::move(probe);
+}
+
+void MainWindow::setGatewayInfo(bool listening, const QString& note) {
+    gatewayListening_ = listening;
+    gatewayNote_ = note;
 }
 
 void MainWindow::loadScenarioFile(const QString& path) {
@@ -332,17 +333,24 @@ void MainWindow::refreshStatus() {
                            .arg(renderMs_, 0, 'f', 2));
     cloudLabel_->setText(QStringLiteral("  点云 %1 点").arg(pointCount_));
 
-    if (linkProbe_) {
-        QString link = linkProbe_();
-        // 兜底制动必须显示出来：画面上的刹车若来自底座而不是算法进程，
-        // 不标注就会被当成算法在起作用，答辩时说不清。
-        if (sim_.standbyGuardActive()) {
-            link += QStringLiteral(" · 兜底制动");
-        }
-        linkLabel_->setText(link);
+    // 状态栏与 HUD 用同一组事实拼文案：以前两处各写一套，HUD 说"失联"、
+    // 状态栏还挂着"等待连接"，同一个状态两种说法，看着像两个 bug。
+    QString link;
+    if (!gatewayListening_) {
+        link = QStringLiteral("通信未启动");
+    } else if (algoOnlineProbe_ && algoOnlineProbe_()) {
+        link = QStringLiteral("算法进程 ● 在线");
+    } else if (algoEverConnected_) {
+        link = QStringLiteral("算法进程 ○ 已断开");
     } else {
-        linkLabel_->setText(QStringLiteral("未启用通信"));
+        link = QStringLiteral("算法进程 ○ 等待连接");
     }
+    // 兜底制动必须显示出来：画面上的刹车若来自底座而不是算法进程，
+    // 不标注就会被当成算法在起作用，答辩时说不清。
+    if (sim_.standbyGuardActive()) {
+        link += QStringLiteral(" · 兜底制动");
+    }
+    linkLabel_->setText(link);
 
     // HUD 每拍都刷新：它显示的是"现在这一帧"的读数，不是某个历史快照的。
     // 暂停时也要刷——否则停在历史帧上时，画面上还挂着最后一个实时读数。
@@ -355,6 +363,12 @@ void MainWindow::refreshStatus() {
     hud.pointCount = pointCount_;
     hud.ghostCount = static_cast<int>(sim_.ghostCount());
     hud.algoOnline = algoOnlineProbe_ ? algoOnlineProbe_() : false;
+    if (hud.algoOnline) {
+        algoEverConnected_ = true;
+    }
+    hud.algoEverConnected = algoEverConnected_;
+    hud.gatewayListening = gatewayListening_;
+    hud.gatewayNote = gatewayNote_;
 
     const auto& cmd = sim_.lastCommand();
     if (cmd.seq > 0) {

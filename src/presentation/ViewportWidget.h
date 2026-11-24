@@ -25,6 +25,15 @@ struct HudState {
     /// 指令相对当前帧的滞后帧数；-1 表示没有指令。
     int cmdAgeFrames{-1};
     bool algoOnline{false};
+    /// 网关是否在监听。false 表示算法进程**根本连不上**（通常是端口被占用），
+    /// 与「在监听但还没人连」必须分开显示：前者要用户去查端口，后者只要去起算法。
+    /// 混成一句"离线"，两种情况的排查方向完全相反。
+    bool gatewayListening{true};
+    /// 未监听时的原因（含端口号），直接画在 HUD 上，省得去翻终端日志。
+    QString gatewayNote;
+    /// 本次运行里是否成功连上过算法。用它把"还没接入"和"接入后掉了"分开：
+    /// 断链兜底是本平台的演示场景之一，掉线时显示"等待接入"会让人以为没连上过。
+    bool algoEverConnected{false};
     double accel{0.0};
     double steer{0.0};
     QString reason;

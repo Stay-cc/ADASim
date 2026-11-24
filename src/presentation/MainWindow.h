@@ -40,12 +40,15 @@ public:
                infra::QtRenderer& renderer,
                QWidget* parent = nullptr);
 
-    /// 由装配根注入链路状态探针，避免表现层认识通信实现。
-    void setLinkProbe(std::function<QString()> probe);
-
-    /// 算法进程是否在线（HUD 用）。与 linkProbe 分开：状态栏要的是可读文案，
-    /// HUD 要的是布尔量，硬从一个字符串里判"●"是把显示格式当契约。
+    /// 算法进程是否在线（HUD 与状态栏共用）。只给布尔量：文案由界面层自己拼，
+    /// 以前这里给的是可读字符串，结果 HUD 和状态栏各写了一套话术，同一种状态
+    /// 能显示成两种说法。
     void setAlgoOnlineProbe(std::function<bool()> probe);
+
+    /// 网关有没有监听上。没监听上时算法进程根本连不进来（多半是端口被占），
+    /// 这与"在监听但算法还没起"是两回事：HUD 上必须分开说，否则用户会去查算法。
+    /// 监听结果在启动时定一次，运行中不会变，所以直接传值而不是给探针。
+    void setGatewayInfo(bool listening, const QString& note);
 
     /// 启动时载入的场景文件；为空则使用内置的跟车场景。
     void loadScenarioFile(const QString& path);
@@ -94,8 +97,11 @@ private:
     QLabel* linkLabel_{nullptr};
     QTimer* tick_{nullptr};
 
-    std::function<QString()> linkProbe_;
     std::function<bool()> algoOnlineProbe_;
+    bool gatewayListening_{true};
+    QString gatewayNote_;
+    /// 本次运行里是否成功连上过算法；HUD 用它区分"还没接入"和"接入后掉了"。
+    bool algoEverConnected_{false};
     QString scenarioPath_;
 
     QAction* followAction_{nullptr};

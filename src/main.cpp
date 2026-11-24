@@ -62,13 +62,6 @@ int main(int argc, char** argv) {
 
     // ---- L1 表现层 ----
     adasim::ui::MainWindow window(sim, scenarioService, runner, renderer);
-    window.setLinkProbe([&gateway]() {
-        if (!gateway.listening()) {
-            return QStringLiteral("通信未启动");
-        }
-        return gateway.linkAlive() ? QStringLiteral("算法进程 ● 在线")
-                                   : QStringLiteral("算法进程 ○ 等待连接");
-    });
     window.setAlgoOnlineProbe([&gateway]() { return gateway.linkAlive(); });
 
     if (gateway.listen()) {
@@ -76,9 +69,17 @@ int main(int argc, char** argv) {
                    "通信网关已监听 127.0.0.1:" + std::to_string(gateway.boundTcpPort()));
     } else {
         // 端口被占用不阻断仿真：单机调试时同时开两个实例很常见。
+        // 但必须让用户看见——否则新开的这个窗口画面一切正常、算法却永远连不上，
+        // 表现为"HUD 一直离线"，而真正占着端口的那个实例可能已经被最小化了。
+        // 端口号取配置默认值而不是 boundTcpPort()：绑定失败时它返回 0，
+        // 提示里就会变成"端口 0 被占用"，等于没说。
+        const QString note = QStringLiteral("端口 %1 被占用")
+                                 .arg(adasim::infra::GatewayConfig{}.tcpPort);
+        window.setGatewayInfo(false, note);
         logger.log(adasim::domain::LogLevel::Warn,
-                   "通信网关监听失败：" + gateway.errorString().toStdString() +
-                       "，仿真功能不受影响");
+                   "通信网关监听失败：" + gateway.errorString().toStdString() + "。" +
+                       "算法进程会连到占用端口的那个实例上，本窗口收不到指令；"
+                       "关掉旧实例或改端口后再试");
     }
 
     window.show();

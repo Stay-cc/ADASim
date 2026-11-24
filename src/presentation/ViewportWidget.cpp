@@ -74,7 +74,9 @@ void ViewportWidget::paintHud(QPainter& painter) {
 
     const int pad = 10;
     const int w = 214;
-    const int h = 136;
+    // 高度按行数算：车速块 30 + 6 行 × 17 + 上下留白。算法状态与 a/δ 拆成两行后
+    // 比原来多一行，写死旧值会把"注入/点云"那行压到面板外。
+    const int h = 153;
     const QRectF panel(pad, pad, w, h);
 
     painter.setPen(QPen(QColor(48, 54, 61), 1.0));
@@ -129,13 +131,37 @@ void ViewportWidget::paintHud(QPainter& painter) {
     }
 
     y += 17;
+    // 四态：网关没监听 / 在监听但没人连 / 曾连上后失联 / 在线。
+    // 第一种是端口或配置问题，第二种只是还没起算法进程，第三种是断链兜底——
+    // 三种情况用户的下一步动作完全不同，不能压成一句"离线"。
+    if (!hud_.gatewayListening) {
+        const QColor danger(248, 81, 73);
+        painter.setPen(danger);
+        painter.drawText(QPointF(pad + 12, y),
+                         hud_.gatewayNote.isEmpty() ? QStringLiteral("算法 ✕ 网关未监听")
+                                                    : QStringLiteral("算法 ✕ %1").arg(hud_.gatewayNote));
+        // 网关没监听时没有 a/δ 可言，留白比画一排 0.00 诚实。
+        y += 17;
+        painter.setPen(dim);
+        painter.drawText(QPointF(pad + 12, y),
+                         QStringLiteral("注入 %1 个   点云 %2")
+                             .arg(hud_.ghostCount)
+                             .arg(hud_.pointCount));
+        return;
+    }
+
     painter.setPen(hud_.algoOnline ? accent : warn);
-    painter.drawText(QPointF(pad + 12, y),
-                     hud_.algoOnline ? QStringLiteral("算法 ● 在线") : QStringLiteral("算法 ○ 离线"));
+    painter.drawText(
+        QPointF(pad + 12, y),
+        hud_.algoOnline          ? QStringLiteral("算法 ● 在线")
+        : hud_.algoEverConnected ? QStringLiteral("算法 ○ 失联（兜底接管）")
+                                 : QStringLiteral("算法 ○ 等待接入"));
 
     // 算法输出：加速度、转角、决策原因。这三个量就是"算法在想什么"的可见部分。
+    // 单独一行：失联文案比"在线"长一倍，挤在同一行会和 a/δ 叠字。
+    y += 17;
     painter.setPen(text);
-    painter.drawText(QPointF(pad + 96, y),
+    painter.drawText(QPointF(pad + 12, y),
                      QStringLiteral("a %1  δ %2")
                          .arg(hud_.accel >= 0.0 ? QStringLiteral("+") + QString::number(hud_.accel, 'f', 2)
                                                 : QString::number(hud_.accel, 'f', 2))
