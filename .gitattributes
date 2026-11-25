@@ -2,6 +2,10 @@
 # 免得换一台机器打开就变成"整个文件都改了"。
 * text=auto eol=lf
 
+# Windows 批处理必须用 CRLF，否则 cmd 解析 label/for 出错、双击无反应
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
 # 二进制：不要做换行转换，也不要尝试文本 diff
 *.png   binary
 *.jpg   binary
