@@ -134,6 +134,9 @@ int main(int argc, char** argv) {
     QStringList injectSpecs;
     int injectDelayMs = 0;
     bool showPicker = false;
+    // 诊断用：启动后延时 N 毫秒自动加载指定场景，模拟"算法先连上、用户再点场景"的时序。
+    QString autoScene;
+    int autoSceneDelayMs = 0;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -156,6 +159,10 @@ int main(int argc, char** argv) {
             injectDelayMs = std::max(0, args.at(++i).toInt());
         } else if (a == QLatin1String("--picker")) {
             showPicker = true;
+        } else if (a == QLatin1String("--auto-scene") && i + 1 < args.size()) {
+            autoScene = args.at(++i);
+        } else if (a == QLatin1String("--auto-scene-delay") && i + 1 < args.size()) {
+            autoSceneDelayMs = std::max(0, args.at(++i).toInt());
         } else if (!a.startsWith(QLatin1String("--"))) {
             scenarioPath = a;
         }
@@ -170,6 +177,15 @@ int main(int argc, char** argv) {
     } else if (showPicker) {
         // 直接跳到场景选择页：截图/测试场景选择页布局用。
         window.showScenarioPicker();
+    }
+
+    if (!autoScene.isEmpty()) {
+        // 延时自动加载场景 + 开跑：复现"算法进程先连上、用户再点场景"的时序，
+        // 与 run.bat 双击后进场景选择页点卡片（onScenarioChosen 加载即 start）等价。
+        QTimer::singleShot(autoSceneDelayMs, &window, [&window, autoScene]() {
+            window.loadScenarioFile(autoScene);
+            window.startSimulation();
+        });
     }
 
     if (!injectSpecs.isEmpty()) {

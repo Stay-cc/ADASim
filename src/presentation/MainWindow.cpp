@@ -4,7 +4,6 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -21,6 +20,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <algorithm>
+#include <chrono>
 #include <climits>
 
 #include "application/ExperimentRunner.h"
@@ -77,7 +77,9 @@ MainWindow::MainWindow(app::SimController& sim,
     stack_->setCurrentIndex(0);
     toolbar_->setVisible(false);
     statusBar()->setVisible(false);
-    fpsWindowStart_ = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    fpsWindowStart_ = std::chrono::duration<double>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
     tick_->start(16);
     refreshStatus();
 }
@@ -310,7 +312,15 @@ bool MainWindow::applyLoadedScenario(const QString& path) {
 }
 
 void MainWindow::onTick() {
-    const double now = QDateTime::currentMSecsSinceEpoch() / 1000.0;
+    // 用 steady_clock（单调时钟），与 SimController 内部的时钟一致。
+    // 早先这里用 QDateTime::currentMSecsSinceEpoch（墙钟，Unix 纪元约 17 亿秒），
+    // 而 stepIfDue 期望单调时钟（系统启动以来的秒数）。两者量级差 17 亿，
+    // 场景切换时 start()/reset() 会把 lastWall_ 设回单调时钟，下一次 stepIfDue
+    // 的 elapsed = 墙钟 - 单调钟 = 巨大正数，触发一次"追帧风暴"（连补 8 步），
+    // 车瞬间前冲，算法据此剧烈打方向，表现为一进场景就蛇形。统一成单调时钟即消除。
+    const double now = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now().time_since_epoch())
+                           .count();
 
     const bool advanced = sim_.stepIfDue(now);
     if (advanced) {
@@ -502,6 +512,10 @@ void MainWindow::onScenarioMode() {
 
 void MainWindow::showScenarioPicker() {
     onScenarioMode();
+}
+
+void MainWindow::startSimulation() {
+    sim_.start();
 }
 
 void MainWindow::populatePicker() {

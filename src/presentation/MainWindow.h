@@ -60,6 +60,9 @@ public:
     /// 跳到场景选择页（供命令行 --picker 与测试出图使用）。
     void showScenarioPicker();
 
+    /// 开始仿真（供命令行 --auto-scene 复现"点场景后自动开跑"）。
+    void startSimulation();
+
 signals:
     /// 第一帧真正贴到控件上时发一次。
     /// 冷启动时间必须量到这一帧：窗口 show() 之后到首帧之间还有场景加载、
