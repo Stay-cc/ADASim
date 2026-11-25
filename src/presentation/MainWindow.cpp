@@ -109,6 +109,10 @@ void MainWindow::buildUi() {
 
     toolbar_->addSeparator();
 
+    auto* homeAction = toolbar_->addAction(QStringLiteral("返回首页"));
+    homeAction->setToolTip(QStringLiteral("回到首页，重新选择模拟场景或自由沙盒"));
+    connect(homeAction, &QAction::triggered, this, &MainWindow::onBackHome);
+
     auto* openAction = toolbar_->addAction(QStringLiteral("载入场景"));
     connect(openAction, &QAction::triggered, this, &MainWindow::onOpenScenario);
 
@@ -530,6 +534,9 @@ void MainWindow::onScenarioChosen(const QString& id) {
 }
 
 void MainWindow::onBackHome() {
+    // 回首页前暂停仿真：否则场景仍在后台推进，且首页上看不到任何反馈，
+    // 再次进入时车已经跑出去很远，像个"没停过"的幽灵。
+    sim_.pause();
     stack_->setCurrentIndex(0);
     toolbar_->setVisible(false);
     statusBar()->setVisible(false);
@@ -544,8 +551,16 @@ void MainWindow::showSimView() {
 void MainWindow::onSandbox() {
     // 沙盒走场景文件而不是内置模板：场地参数（车道数、雷达量程、分段道路）
     // 应当和别的场景一样可改可版本化，写死在代码里就只能重编译。
-    const QString path = QDir(QCoreApplication::applicationDirPath())
-                             .absoluteFilePath(QStringLiteral("../scenarios/sandbox.json"));
+    // 路径要上三级（bin → build → 项目根），写成 ../scenarios 会指向
+    // build/*/scenarios（不存在），沙盒就加载失败进不去。
+    const QString exeDir = QCoreApplication::applicationDirPath();
+    QString path = QDir(exeDir).absoluteFilePath(QStringLiteral("../../../scenarios/sandbox.json"));
+    if (!QFileInfo::exists(path)) {
+        path = QDir(exeDir).absoluteFilePath(QStringLiteral("../scenarios/sandbox.json"));
+    }
+    if (!QFileInfo::exists(path)) {
+        path = QDir::current().absoluteFilePath(QStringLiteral("scenarios/sandbox.json"));
+    }
     if (applyLoadedScenario(path)) {
         sim_.start();   // 沙盒载入即跑，不必再按一次播放
         showSimView();
