@@ -66,6 +66,10 @@ class StateFrame:
     obstacles: list[TruthObstacle] = field(default_factory=list)
     # 道路曲率，1/m，正值左弯。老版本底座不发这个字段，缺省按直道处理。
     curvature: float = 0.0
+    # 分段道路（超大地图）。为空时算法沿用单曲率 curvature。
+    road_segments: list = field(default_factory=list)
+    # 自车沿道路里程，用于在分段道路上定位参考点。
+    odometer: float = 0.0
     ack_seq: int = -1
 
 
@@ -136,12 +140,26 @@ def parse_state(payload: bytes) -> StateFrame | None:
         frame = int(obj.get("frame", 0))
         sim_time = float(obj.get("t", 0.0))
         curvature = float(obj.get("curvature", 0.0))
+        odometer = float(obj.get("odometer", 0.0))
         ack_seq = int(obj.get("ackSeq", -1))
     except (TypeError, ValueError):
         return None
 
+    road_segments = []
+    for seg in obj.get("roadSegments") or ():
+        if isinstance(seg, dict):
+            road_segments.append({
+                "startS": float(seg.get("startS", 0.0)),
+                "endS": float(seg.get("endS", 0.0)),
+                "curvature": float(seg.get("curvature", 0.0)),
+                "laneCount": int(seg.get("laneCount", 2)),
+                "laneWidth": float(seg.get("laneWidth", 3.5)),
+            })
+
     return StateFrame(frame=frame, sim_time=sim_time, ego=ego,
-                      obstacles=obstacles, curvature=curvature, ack_seq=ack_seq)
+                      obstacles=obstacles, curvature=curvature,
+                      road_segments=road_segments, odometer=odometer,
+                      ack_seq=ack_seq)
 
 
 def encode_command(seq: int, frame: int, sim_time: float,

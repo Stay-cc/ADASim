@@ -20,6 +20,63 @@ from dataclasses import dataclass
 from .perception import Track
 
 
+def road_pose_at(segments: list, s: float) -> tuple[float, float, float]:
+    """分段道路中心线在里程 s 处的世界位姿 (x, y, theta)。
+
+    与 C++ 侧 roadPoseAt 同一套路径积分：从里程 0 的世界原点、朝 +x 出发，
+    直道沿切线直线延伸，弯道走半径 R = 1/κ 的圆弧。交点切线连续。
+    返回 (x, y, theta)；s 超出范围时沿末端切线外推。
+    """
+    x, y, theta = 0.0, 0.0, 0.0
+    if not segments:
+        return s, 0.0, 0.0
+
+    cursor = 0.0
+    for seg in segments:
+        seg_start = float(seg["startS"])
+        seg_end = float(seg["endS"])
+        length = seg_end - seg_start
+        if length <= 0.0:
+            continue
+        kappa = float(seg["curvature"])
+        if s <= seg_end:
+            run = s - cursor
+            if abs(kappa) < 1e-9:
+                x += run * math.cos(theta)
+                y += run * math.sin(theta)
+            else:
+                r = 1.0 / kappa
+                dtheta = kappa * run
+                cx = x - r * math.sin(theta)
+                cy = y + r * math.cos(theta)
+                a0 = math.atan2(y - cy, x - cx)
+                a1 = a0 + dtheta
+                x = cx + r * math.cos(a1)
+                y = cy + r * math.sin(a1)
+                theta += dtheta
+            return x, y, theta
+        # 整段走完
+        if abs(kappa) < 1e-9:
+            x += length * math.cos(theta)
+            y += length * math.sin(theta)
+        else:
+            r = 1.0 / kappa
+            dtheta = kappa * length
+            cx = x - r * math.sin(theta)
+            cy = y + r * math.cos(theta)
+            a0 = math.atan2(y - cy, x - cx)
+            a1 = a0 + dtheta
+            x = cx + r * math.cos(a1)
+            y = cy + r * math.sin(a1)
+            theta += dtheta
+        cursor = seg_end
+    # 超出全部段：沿末端切线外推
+    run = s - cursor
+    x += run * math.cos(theta)
+    y += run * math.sin(theta)
+    return x, y, theta
+
+
 @dataclass(slots=True)
 class PlanningConfig:
     """可调参数集中在一处，便于实验章节做参数敏感性分析。"""
@@ -78,7 +135,9 @@ class Planner:
         self._steer = 0.0
 
     def plan(self, ego, tracks: list[Track], dt: float,
-             curvature: float = 0.0) -> Plan:
+             curvature: float = 0.0,
+             road_segments: list | None = None,
+             odometer: float = 0.0) -> Plan:
         cfg = self.cfg
 
         lead, gap, lead_speed = select_lead(ego, tracks, cfg)
@@ -103,7 +162,8 @@ class Planner:
                 reason = "emergency"
 
         accel = max(-cfg.decel_max, min(cfg.accel_max, accel))
-        steer, cross_track, heading_error = self._track_path(ego, dt, curvature)
+        steer, cross_track, heading_error = self._track_path(
+            ego, dt, curvature, road_segments, odometer)
 
         return Plan(
             accel=accel,
@@ -118,21 +178,46 @@ class Planner:
         )
 
     def _track_path(self, ego, dt: float,
-                    curvature: float = 0.0) -> tuple[float, float, float]:
-        """Stanley 横向控制，参考路径由曲率决定。
+                    curvature: float = 0.0,
+                    road_segments: list | None = None,
+                    odometer: float = 0.0) -> tuple[float, float, float]:
+        """Stanley 横向控制，参考路径由道路几何决定。
 
-        直道（|κ| < 1e-9）参考路径为 y = 0；弯道按圆弧处理，圆心在
-        (0, R)，R = 1/κ。用圆弧而不是抛物线近似，是因为抛物线只在
-        x << R 时贴合：R = 300 m、跑出 240 m 时抛物线给出的横向偏移
-        已比真实圆弧大 4%，这点偏差会被算进横向误差里，成了"控制器
-        没跟好"的假象。
-
-        自车与参考圆的偏差直接由"到圆心的距离"给出，不需要最近点搜索：
-        圆是全局可解析的，最坏情况（自车被甩到圆心另一侧）也只需要
-        atan2，而折线最近点搜索在曲率突变处容易跳点。
+        分两种道路：
+        * 单曲率场景（road_segments 为空）：直道参考 y = 0；弯道按圆弧，
+          圆心在 (0, R)，R = 1/κ。
+        * 分段道路（road_segments 非空）：用路径积分求"自车里程处的中心线
+          位姿 (xc, yc, θc) 与当前段曲率 κc"，横向偏差取自车到中心线切线的
+          有符号距离。这是分段地图正确性的关键——弯道段的圆心不在世界原点，
+          沿用"圆心在原点"的圆弧会把参考路径画到错误位置，横向误差会假性
+          爆炸（实测 RMS 28 m，而车其实跟得不错）。
         """
         cfg = self.cfg
-        if abs(curvature) < 1e-9:
+
+        # 当前段曲率：单曲率场景就是 curvature；分段场景按里程查。
+        if road_segments:
+            cur = None
+            for seg in road_segments:
+                if seg["startS"] <= odometer < seg["endS"]:
+                    cur = seg
+                    break
+            kappa = float(cur["curvature"]) if cur else 0.0
+        else:
+            kappa = curvature
+
+        if road_segments:
+            # 分段道路：参考是"里程处的中心线点 + 切线"。
+            xc, yc, theta_c = road_pose_at(road_segments, odometer)
+            dx = ego.x - xc
+            dy = ego.y - yc
+            # 横向偏差：自车相对切线的有符号距离。切线方向 (cosθc, sinθc)，
+            # 左法向为 (-sinθc, cosθc)。正值表示偏左。
+            cross_track_left = -math.sin(theta_c) * dx + math.cos(theta_c) * dy
+            # Stanley 口径"正值偏右"，取反。
+            cross_track = -cross_track_left
+            heading_error = math.atan2(math.sin(theta_c - ego.theta),
+                                       math.cos(theta_c - ego.theta))
+        elif abs(curvature) < 1e-9:
             cross_track = -ego.y                 # 横向偏差，正值表示偏右
             heading_error = -ego.theta           # 目标航向为 0
         else:
@@ -154,7 +239,7 @@ class Planner:
         desired = heading_error + math.atan(cfg.steer_gain * cross_track / speed)
         # 曲率前馈：稳态在弯道上需要的转角是 atan(L·κ)，不给这一项，
         # 纯反馈必须靠"持续偏离参考线"攒出误差才有转角，稳态偏差降不下来。
-        desired += math.atan(cfg.wheel_base * curvature)
+        desired += math.atan(cfg.wheel_base * kappa)
         desired = max(-cfg.max_steer, min(cfg.max_steer, desired))
 
         # 一阶滞后：等价于转向电机的时间常数，dt 越小时越接近连续形式。

@@ -29,6 +29,18 @@ public:
     /// 按模板构造初始帧。ego 置于原点、沿 +x 方向，障碍物按其位姿放置。
     [[nodiscard]] domain::WorldState buildInitialState(const domain::ScenarioTemplate& tmpl) const;
 
+    /// 场景摘要：供场景选择页展示。id 是文件名（不含扩展名），
+    /// description 是从场景内容推导的一句话说明。
+    struct Summary {
+        std::string id;
+        std::string name;
+        std::string description;
+        domain::ScenarioTemplate tmpl;
+    };
+
+    /// 列出所有预设场景的摘要（含沙盒，由调用方决定是否过滤）。
+    [[nodiscard]] std::vector<Summary> listAvailable() const;
+
 private:
     domain::IPersistence& store_;
 };

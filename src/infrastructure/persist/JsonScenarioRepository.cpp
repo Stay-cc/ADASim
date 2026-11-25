@@ -91,6 +91,26 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
     }
     tmpl.openWorld = root.value(QStringLiteral("openWorld")).toBool(false);
 
+    // 分段道路（超大地图）。数组元素为 { startS, endS, curvature, laneCount, laneWidth }，
+    // 必须按 startS 升序且连续拼接；为空则沿用单曲率字段。
+    const QJsonArray segs = root.value(QStringLiteral("roadSegments")).toArray();
+    tmpl.roadSegments.reserve(static_cast<std::size_t>(segs.size()));
+    for (const auto& item : segs) {
+        if (!item.isObject()) {
+            continue;
+        }
+        const QJsonObject o = item.toObject();
+        domain::RoadSegment seg;
+        seg.startS = num(o, "startS", 0.0);
+        seg.endS = num(o, "endS", 0.0);
+        seg.curvature = num(o, "curvature", 0.0);
+        seg.laneCount = o.value(QStringLiteral("laneCount")).toInt(2);
+        seg.laneWidth = num(o, "laneWidth", 3.5);
+        if (seg.endS > seg.startS) {
+            tmpl.roadSegments.push_back(seg);
+        }
+    }
+
     // sensor 块可缺省：缺省即传感器默认参数，老场景文件不必改。
     if (root.value(QStringLiteral("sensor")).isObject()) {
         const QJsonObject s = root.value(QStringLiteral("sensor")).toObject();
@@ -209,6 +229,20 @@ bool JsonScenarioRepository::save(const std::string& path,
         params.append(o);
     }
     root.insert(QStringLiteral("parameters"), params);
+
+    QJsonArray segs;
+    for (const auto& s : tmpl.roadSegments) {
+        QJsonObject o;
+        o.insert(QStringLiteral("startS"), s.startS);
+        o.insert(QStringLiteral("endS"), s.endS);
+        o.insert(QStringLiteral("curvature"), s.curvature);
+        o.insert(QStringLiteral("laneCount"), s.laneCount);
+        o.insert(QStringLiteral("laneWidth"), s.laneWidth);
+        segs.append(o);
+    }
+    if (!segs.isEmpty()) {
+        root.insert(QStringLiteral("roadSegments"), segs);
+    }
 
     QDir().mkpath(QFileInfo(full).absolutePath());
     QFile file(full);

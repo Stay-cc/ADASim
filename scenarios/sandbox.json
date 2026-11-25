@@ -1,6 +1,6 @@
 {
   "id": "sandbox",
-  "name": "无尽沙盒（运行时注入）",
+  "name": "无尽沙盒（超大地图）",
   "laneCount": 3,
   "laneWidth": 3.5,
   "curvature": 0.0,
@@ -13,6 +13,14 @@
     "lidarRange": 60.0,
     "lidarPointsPerMeter": 2.0
   },
+  "roadSegments": [
+    { "startS": 0,     "endS": 200,   "curvature": 0.0,    "laneCount": 3, "laneWidth": 3.5 },
+    { "startS": 200,   "endS": 350,   "curvature": 0.005,  "laneCount": 2, "laneWidth": 3.5 },
+    { "startS": 350,   "endS": 450,   "curvature": -0.004, "laneCount": 2, "laneWidth": 3.5 },
+    { "startS": 450,   "endS": 650,   "curvature": 0.0,    "laneCount": 4, "laneWidth": 3.5 },
+    { "startS": 650,   "endS": 800,   "curvature": 0.003,  "laneCount": 3, "laneWidth": 3.5 },
+    { "startS": 800,   "endS": 1100,  "curvature": 0.0,    "laneCount": 3, "laneWidth": 3.5 }
+  ],
   "actors": [],
   "parameters": []
 }

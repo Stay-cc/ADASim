@@ -77,6 +77,17 @@ WorldState PhysicsEngine::step(const WorldState& in, double dt,
     out.ego = integrate(in.ego, out.egoSpeed, steer, dt);
     out.ego.theta = std::remainder(out.ego.theta, 2.0 * kPi);
 
+    // 累计里程：每步走的路程按平均速度近似（dt 内速度变化可忽略）。
+    out.egoOdometer = in.egoOdometer + out.egoSpeed * dt;
+
+    // 分段道路：按里程查当前段，把段的曲率与车道几何写回状态。
+    // 单曲率场景（roadSegments 为空）走不到这里，curvature 保持模板初值不变。
+    if (const RoadSegment* seg = segmentAt(in.roadSegments, out.egoOdometer)) {
+        out.curvature = seg->curvature;
+        out.laneCount = seg->laneCount;
+        out.laneWidth = seg->laneWidth;
+    }
+
     // 障碍物按各自行为推进（匀速 / 跟驰 / 切入）。
     // 行为推进与自车积分分开：自车由控制指令驱动，参与者由行为模型驱动。
     advanceActors(in, out, dt);

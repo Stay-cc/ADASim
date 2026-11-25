@@ -263,7 +263,8 @@ class AlgoNode:
                 self._cloud_age = state.frame - self._latest_cloud.frame
 
         dt = 0.02
-        plan = self.planner.plan(state.ego, tracks, dt, state.curvature)
+        plan = self.planner.plan(state.ego, tracks, dt, state.curvature,
+                                 state.road_segments, state.odometer)
         self.last_plan = plan
         self.last_track_count = len(tracks)
 

@@ -6,6 +6,48 @@
 namespace adasim::app {
 namespace {
 
+/// 从场景内容推导一句话描述。供场景选择页展示，避免为每个场景手写 description 字段。
+/// 优先级：行为类型 > 道路曲率 > 车道数 > 参与者数量。
+std::string describeScenario(const domain::ScenarioTemplate& tmpl) {
+    if (tmpl.openWorld) {
+        return "超大地图：直道、弯道、多车道路段，右键注入障碍物";
+    }
+
+    // 有切入行为优先说切入。
+    for (const auto& a : tmpl.actors) {
+        if (a.behavior == domain::BehaviorKind::CutIn) {
+            return a.brakeAccel > 0.0 ? "邻车切入并急刹" : "邻车切入";
+        }
+    }
+    // 有制动行为说制动。
+    for (const auto& a : tmpl.actors) {
+        if (a.behavior == domain::BehaviorKind::Brake) {
+            return "前车制动";
+        }
+    }
+    // 有跟驰行为说跟驰。
+    for (const auto& a : tmpl.actors) {
+        if (a.behavior == domain::BehaviorKind::CarFollowing) {
+            return "跟驰";
+        }
+    }
+    // 无参与者则按道路特征描述。
+    if (tmpl.actors.empty()) {
+        if (!tmpl.roadSegments.empty()) {
+            return "分段道路";
+        }
+        if (std::abs(tmpl.curvature) > 1e-9) {
+            return tmpl.curvature > 0.0 ? "左弯跟踪" : "右弯跟踪";
+        }
+        return "空直道";
+    }
+    // 有参与者但都是匀速，按几何描述。
+    if (std::abs(tmpl.curvature) > 1e-9) {
+        return tmpl.curvature > 0.0 ? "左弯 + 参与者" : "右弯 + 参与者";
+    }
+    return "直道 + 参与者";
+}
+
 domain::EntityKind kindFromString(const std::string& type) {
     if (type == "truck") {
         return domain::EntityKind::Truck;
@@ -187,6 +229,8 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     // 曲率同样随状态下发：算法侧要据此生成弯道参考路径，
     // 只存在模板里的话，仿真跑起来就只剩一条直道。
     state.curvature = tmpl.curvature;
+    // 分段道路（超大地图）：整份拷贝进初始状态，物理层每帧按自车里程查段。
+    state.roadSegments = tmpl.roadSegments;
     // 车道几何跟着状态走，渲染层才能画出路面。
     state.laneCount = tmpl.laneCount;
     state.laneWidth = tmpl.laneWidth;
@@ -219,6 +263,25 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     }
 
     return state;
+}
+
+std::vector<ScenarioService::Summary> ScenarioService::listAvailable() const {
+    std::vector<Summary> out;
+    for (const auto& id : store_.listTemplates()) {
+        // listTemplates 返回的是去掉扩展名的文件名，load 时要补回 .json。
+        auto tmpl = store_.load(id + ".json");
+        if (!tmpl.has_value()) {
+            continue;
+        }
+
+        Summary s;
+        s.id = id;
+        s.name = tmpl->name.empty() ? id : tmpl->name;
+        s.description = describeScenario(*tmpl);
+        s.tmpl = std::move(*tmpl);
+        out.push_back(std::move(s));
+    }
+    return out;
 }
 
 }  // namespace adasim::app

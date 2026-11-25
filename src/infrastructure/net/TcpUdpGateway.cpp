@@ -141,6 +141,20 @@ void TcpUdpGateway::publishState(const domain::StatePacket& packet) {
     // 曲率取 0 时也照发：算法侧不该靠"字段缺失"去猜这是直道，
     // 显式给 0 才能把"直道"与"老版本底座不发这个字段"区分开。
     root.insert(QStringLiteral("curvature"), packet.curvature);
+    root.insert(QStringLiteral("odometer"), packet.egoOdometer);
+
+    // 分段道路（超大地图）：逐段下发。为空则数组为空，算法侧回退到单曲率。
+    QJsonArray segs;
+    for (const auto& s : packet.roadSegments) {
+        QJsonObject o;
+        o.insert(QStringLiteral("startS"), s.startS);
+        o.insert(QStringLiteral("endS"), s.endS);
+        o.insert(QStringLiteral("curvature"), s.curvature);
+        o.insert(QStringLiteral("laneCount"), s.laneCount);
+        o.insert(QStringLiteral("laneWidth"), s.laneWidth);
+        segs.append(o);
+    }
+    root.insert(QStringLiteral("roadSegments"), segs);
 
     QJsonObject ego;
     ego.insert(QStringLiteral("x"), packet.ego.x);

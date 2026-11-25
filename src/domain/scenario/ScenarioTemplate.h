@@ -6,6 +6,7 @@
 
 #include "domain/model/Behavior.h"
 #include "domain/model/Pose.h"
+#include "domain/model/RoadSegment.h"
 
 namespace adasim::domain {
 
@@ -51,6 +52,9 @@ struct ScenarioTemplate {
     int laneCount{2};
     double laneWidth{3.5};      ///< m
     double curvature{0.0};      ///< 1/m，0 为直道
+    /// 分段道路定义。为空时沿用上面的单曲率字段（旧场景语义不变）；
+    /// 非空时按里程查段，curvature 字段仅作首段曲率的兜底值。
+    std::vector<RoadSegment> roadSegments;
     double friction{0.9};       ///< 路面附着系数
     double visibility{1.0};     ///< 能见度系数，1 为晴好
     double durationSeconds{30.0};
