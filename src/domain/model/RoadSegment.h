@@ -46,6 +46,10 @@ struct RoadPose {
 
 /// 求里程 s 处道路中心线的世界位姿。segs 必须按 startS 升序且连续拼接。
 /// s 超出范围时，按最后一段的末端切线外推（直道外推），保证"开出地图"也稳定。
+///
+/// 弯道几何：圆心在起点沿"弯向的法向"偏移 R = 1/|κ|（左弯左法向、右弯右法向），
+/// 转角 dtheta = κ·len。半径必须取正——若沿用有符号 R = 1/κ，终点公式
+/// cx + R·cos 会把符号带错，右弯路径会跳到错误位置（S 弯交界处跳几百米）。
 inline RoadPose roadPoseAt(const std::vector<RoadSegment>& segs, double s) {
     RoadPose out;  // 起点：世界原点，朝 +x
     if (segs.empty()) {
@@ -53,52 +57,37 @@ inline RoadPose roadPoseAt(const std::vector<RoadSegment>& segs, double s) {
         return out;
     }
 
+    // 沿当前切线前进 run 米（直道），或走半径 1/|κ| 的圆弧（弯道）。
+    const auto advance = [&out](double run, double kappa) {
+        if (std::abs(kappa) < 1e-9) {
+            out.x += run * std::cos(out.theta);
+            out.y += run * std::sin(out.theta);
+            return;
+        }
+        const double radius = std::abs(1.0 / kappa);  // 正半径
+        const double dTheta = kappa * run;            // 有符号转角
+        const double sign = kappa > 0.0 ? 1.0 : -1.0; // 左弯用左法向、右弯用右法向
+        const double cx = out.x - sign * radius * std::sin(out.theta);
+        const double cy = out.y + sign * radius * std::cos(out.theta);
+        const double a0 = std::atan2(out.y - cy, out.x - cx);
+        const double a1 = a0 + dTheta;
+        out.x = cx + radius * std::cos(a1);
+        out.y = cy + radius * std::sin(a1);
+        out.theta += dTheta;
+    };
+
     double cursor = 0.0;  // 已走过的里程
     for (const auto& seg : segs) {
-        const double segStart = seg.startS;
         const double segEnd = seg.endS;
-        const double len = segEnd - segStart;
+        const double len = segEnd - seg.startS;
         if (len <= 0.0) {
             continue;
         }
-        // 目标里程落在本段内：在本段内部再前进 (s - cursor)
         if (s <= segEnd) {
-            const double run = s - cursor;
-            const double kappa = seg.curvature;
-            if (std::abs(kappa) < 1e-9) {
-                out.x += run * std::cos(out.theta);
-                out.y += run * std::sin(out.theta);
-            } else {
-                const double R = 1.0 / kappa;
-                const double dTheta = kappa * run;
-                // 圆心在起点沿法向（左为 +y 法向）偏移 R
-                const double cx = out.x - R * std::sin(out.theta);
-                const double cy = out.y + R * std::cos(out.theta);
-                // 从起点到圆心的向量角，转 dTheta
-                const double a0 = std::atan2(out.y - cy, out.x - cx);
-                const double a1 = a0 + dTheta;
-                out.x = cx + R * std::cos(a1);
-                out.y = cy + R * std::sin(a1);
-                out.theta += dTheta;
-            }
+            advance(s - cursor, seg.curvature);
             return out;
         }
-        // 整段都要走完
-        const double kappa = seg.curvature;
-        if (std::abs(kappa) < 1e-9) {
-            out.x += len * std::cos(out.theta);
-            out.y += len * std::sin(out.theta);
-        } else {
-            const double R = 1.0 / kappa;
-            const double dTheta = kappa * len;
-            const double cx = out.x - R * std::sin(out.theta);
-            const double cy = out.y + R * std::cos(out.theta);
-            const double a0 = std::atan2(out.y - cy, out.x - cx);
-            const double a1 = a0 + dTheta;
-            out.x = cx + R * std::cos(a1);
-            out.y = cy + R * std::sin(a1);
-            out.theta += dTheta;
-        }
+        advance(len, seg.curvature);
         cursor = segEnd;
     }
     // 超出全部段：沿末端切线外推

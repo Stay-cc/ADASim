@@ -24,12 +24,34 @@ def road_pose_at(segments: list, s: float) -> tuple[float, float, float]:
     """分段道路中心线在里程 s 处的世界位姿 (x, y, theta)。
 
     与 C++ 侧 roadPoseAt 同一套路径积分：从里程 0 的世界原点、朝 +x 出发，
-    直道沿切线直线延伸，弯道走半径 R = 1/κ 的圆弧。交点切线连续。
+    直道沿切线直线延伸，弯道走半径 R = 1/|κ| 的圆弧。交点切线连续。
     返回 (x, y, theta)；s 超出范围时沿末端切线外推。
+
+    弯道几何：圆心在起点沿"弯向的法向"偏移 R（左弯左法向、右弯右法向），
+    转角 dtheta = κ·len（有符号）。半径必须取正：若沿用有符号 R=1/κ，
+    终点公式 cx + R·cos 会把符号带错，右弯的路径会跳到错误位置。
     """
     x, y, theta = 0.0, 0.0, 0.0
     if not segments:
         return s, 0.0, 0.0
+
+    def advance(run: float, kappa: float):
+        nonlocal x, y, theta
+        if abs(kappa) < 1e-9:
+            x += run * math.cos(theta)
+            y += run * math.sin(theta)
+            return
+        radius = abs(1.0 / kappa)          # 正半径
+        dtheta = kappa * run               # 有符号转角
+        # 法向：左法向 (-sinθ, cosθ)。右弯用负法向（+sinθ, -cosθ）。
+        sign = 1.0 if kappa > 0.0 else -1.0
+        cx = x - sign * radius * math.sin(theta)
+        cy = y + sign * radius * math.cos(theta)
+        a0 = math.atan2(y - cy, x - cx)    # 圆心 → 起点 的角度
+        a1 = a0 + dtheta
+        x = cx + radius * math.cos(a1)
+        y = cy + radius * math.sin(a1)
+        theta += dtheta
 
     cursor = 0.0
     for seg in segments:
@@ -40,35 +62,9 @@ def road_pose_at(segments: list, s: float) -> tuple[float, float, float]:
             continue
         kappa = float(seg["curvature"])
         if s <= seg_end:
-            run = s - cursor
-            if abs(kappa) < 1e-9:
-                x += run * math.cos(theta)
-                y += run * math.sin(theta)
-            else:
-                r = 1.0 / kappa
-                dtheta = kappa * run
-                cx = x - r * math.sin(theta)
-                cy = y + r * math.cos(theta)
-                a0 = math.atan2(y - cy, x - cx)
-                a1 = a0 + dtheta
-                x = cx + r * math.cos(a1)
-                y = cy + r * math.sin(a1)
-                theta += dtheta
+            advance(s - cursor, kappa)
             return x, y, theta
-        # 整段走完
-        if abs(kappa) < 1e-9:
-            x += length * math.cos(theta)
-            y += length * math.sin(theta)
-        else:
-            r = 1.0 / kappa
-            dtheta = kappa * length
-            cx = x - r * math.sin(theta)
-            cy = y + r * math.cos(theta)
-            a0 = math.atan2(y - cy, x - cx)
-            a1 = a0 + dtheta
-            x = cx + r * math.cos(a1)
-            y = cy + r * math.sin(a1)
-            theta += dtheta
+        advance(length, kappa)
         cursor = seg_end
     # 超出全部段：沿末端切线外推
     run = s - cursor
