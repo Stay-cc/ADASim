@@ -12,7 +12,9 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSlider>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -25,46 +27,11 @@
 #include "application/ScenarioService.h"
 #include "application/SimController.h"
 #include "infrastructure/render/QtRenderer.h"
+#include "presentation/HomeWidget.h"
+#include "presentation/ScenarioPickerWidget.h"
 #include "presentation/ViewportWidget.h"
 
 namespace adasim::ui {
-namespace {
-
-/// 内置场景：本车 30 km/h 巡航，前方 25 m 一辆 15 km/h 的慢车。
-/// 选它作为默认场景的原因是它会稳定触发减速与跟驰，
-/// 启动后立刻能看到闭环在动，而不是一辆车对着空路直行。
-domain::ScenarioTemplate makeDefaultScenario() {
-    domain::ScenarioTemplate tmpl;
-    tmpl.id = "default_following";
-    tmpl.name = "默认跟车场景";
-    tmpl.laneCount = 2;
-    tmpl.laneWidth = 3.5;
-    tmpl.durationSeconds = 60.0;
-
-    domain::ActorSpec lead;
-    lead.type = "car";
-    lead.pose.x = 25.0;
-    lead.pose.y = 0.0;
-    lead.pose.theta = 0.0;
-    lead.speed = 4.2;  // 约 15 km/h
-    lead.behavior = domain::BehaviorKind::CarFollowing;
-    tmpl.actors.push_back(lead);
-
-    domain::ActorSpec side;
-    side.type = "car";
-    side.pose.x = 18.0;
-    side.pose.y = 3.5;
-    side.pose.theta = 0.0;
-    side.speed = 8.0;
-    side.behavior = domain::BehaviorKind::Constant;
-    tmpl.actors.push_back(side);
-
-    tmpl.parameters.push_back({"leadGap", 10.0, 40.0, 2.0});
-    tmpl.parameters.push_back({"leadSpeed", 2.0, 12.0, 0.5});
-    return tmpl;
-}
-
-}  // namespace
 
 MainWindow::MainWindow(app::SimController& sim,
                        app::ScenarioService& scenarios,
@@ -82,79 +49,119 @@ MainWindow::MainWindow(app::SimController& sim,
     setWindowTitle(QStringLiteral("ADASim — 轻量级自动驾驶算法仿真平台"));
     resize(1180, 760);
 
-    // 启动即载入默认场景，避免出现"空白窗口 + 需要先找文件"的冷启动体验。
-    const auto tmpl = makeDefaultScenario();
-    sim_.reset(scenarios_.buildInitialState(tmpl));
-    sim_.pause();
+    // 首页与场景选择页用浅色卡片风格（跟随系统 light 主题），
+    // 仿真视图保持深色画布（渲染器背景本来就是深色，是"路面"的视觉基调）。
+    setStyleSheet(QStringLiteral(
+        "#homeTitle { font-size: 44px; font-weight: 700; color: #1f2933; }"
+        "#homeSubtitle { font-size: 16px; color: #52606d; }"
+        "#homeHint { font-size: 13px; color: #7b8794; }"
+        "#cardGlyph { font-size: 56px; }"
+        "#cardTitle { font-size: 22px; font-weight: 600; color: #1f2933; }"
+        "#cardDesc { font-size: 13px; color: #52606d; }"
+        "QPushButton#scenarioCard, QPushButton#sandboxCard {"
+        "  background: #ffffff; border: 1px solid #e4e7eb; border-radius: 12px; }"
+        "QPushButton#scenarioCard:hover, QPushButton#sandboxCard:hover {"
+        "  border: 1px solid #2563eb; background: #f8faff; }"
+        "#pickerTitle { font-size: 22px; font-weight: 600; color: #1f2933; }"
+        "QPushButton#scenarioCard { background: #ffffff; border: 1px solid #e4e7eb;"
+        "  border-radius: 10px; }"
+        "QPushButton#scenarioCard:hover { border: 1px solid #2563eb; }"
+        "#cardName { font-size: 14px; font-weight: 600; color: #1f2933; }"
+        "#cardDesc { font-size: 12px; color: #52606d; }"
+        "QMainWindow { background: #f5f7fa; }"
+        "QWidget { background: #f5f7fa; }"));
 
+    // 启动先停在首页，让用户选择「模拟场景」或「自由沙盒」，
+    // 而不是一进来就默认载入某个场景。默认场景仍保留在 onScenarioMode 之外的
+    // 兜底路径（命令行直接指定场景文件时不经过首页）。
+    stack_->setCurrentIndex(0);
+    toolbar_->setVisible(false);
+    statusBar()->setVisible(false);
     fpsWindowStart_ = QDateTime::currentMSecsSinceEpoch() / 1000.0;
     tick_->start(16);
     refreshStatus();
 }
 
 void MainWindow::buildUi() {
-    auto* toolbar = addToolBar(QStringLiteral("控制"));
-    toolbar->setMovable(false);
+    toolbar_ = addToolBar(QStringLiteral("控制"));
+    toolbar_->setMovable(false);
 
-    auto* playAction = toolbar->addAction(QStringLiteral("播放"));
+    auto* playAction = toolbar_->addAction(QStringLiteral("播放"));
     playAction->setShortcut(Qt::Key_Space);
     connect(playAction, &QAction::triggered, this, &MainWindow::onPlayPause);
 
-    auto* stepAction = toolbar->addAction(QStringLiteral("单步"));
+    auto* stepAction = toolbar_->addAction(QStringLiteral("单步"));
     stepAction->setShortcut(Qt::Key_Right);
     connect(stepAction, &QAction::triggered, this, &MainWindow::onStep);
 
-    toolbar->addSeparator();
+    toolbar_->addSeparator();
 
-    toolbar->addWidget(new QLabel(QStringLiteral(" 倍速 "), this));
+    toolbar_->addWidget(new QLabel(QStringLiteral(" 倍速 "), this));
     speedBox_ = new QComboBox(this);
     speedBox_->addItem(QStringLiteral("0.5×"), 0.5);
     speedBox_->addItem(QStringLiteral("1×"), 1.0);
     speedBox_->addItem(QStringLiteral("2×"), 2.0);
     speedBox_->addItem(QStringLiteral("4×"), 4.0);
     speedBox_->setCurrentIndex(1);
-    toolbar->addWidget(speedBox_);
+    toolbar_->addWidget(speedBox_);
     connect(speedBox_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onSpeedChanged);
 
-    toolbar->addSeparator();
+    toolbar_->addSeparator();
 
-    auto* openAction = toolbar->addAction(QStringLiteral("载入场景"));
+    auto* openAction = toolbar_->addAction(QStringLiteral("载入场景"));
     connect(openAction, &QAction::triggered, this, &MainWindow::onOpenScenario);
 
-    auto* expAction = toolbar->addAction(QStringLiteral("跑实验"));
+    auto* expAction = toolbar_->addAction(QStringLiteral("跑实验"));
     connect(expAction, &QAction::triggered, this, &MainWindow::onRunExperiment);
 
-    toolbar->addSeparator();
+    toolbar_->addSeparator();
 
-    auto* sandboxAction = toolbar->addAction(QStringLiteral("沙盒"));
+    auto* sandboxAction = toolbar_->addAction(QStringLiteral("沙盒"));
     sandboxAction->setToolTip(QStringLiteral("无尽沙盒：空路面，右键点哪就在哪注入一个目标"));
     connect(sandboxAction, &QAction::triggered, this, &MainWindow::onSandbox);
 
-    auto* clearAction = toolbar->addAction(QStringLiteral("清除注入"));
+    auto* clearAction = toolbar_->addAction(QStringLiteral("清除注入"));
     clearAction->setToolTip(QStringLiteral("移除当前所有注入目标"));
     connect(clearAction, &QAction::triggered, this, &MainWindow::onClearGhosts);
 
-    toolbar->addSeparator();
+    toolbar_->addSeparator();
 
     // 默认跟随自车：视口初始中心在原点，而自车 10 s 就能开出上百米，
     // 不跟随的话跑几秒后画面里只剩网格——这对演示与论文配图都是致命的。
     // 一旦用户拖拽或滚轮调整，就自动取消跟随，避免"手一松就被拉回去"。
-    followAction_ = toolbar->addAction(QStringLiteral("跟随自车"));
+    followAction_ = toolbar_->addAction(QStringLiteral("跟随自车"));
     followAction_->setCheckable(true);
     followAction_->setChecked(true);
 
     auto* central = new QWidget(this);
-    auto* layout = new QVBoxLayout(central);
+    auto* centralLay = new QVBoxLayout(central);
+    centralLay->setContentsMargins(0, 0, 0, 0);
+    centralLay->setSpacing(0);
+
+    stack_ = new QStackedWidget(central);
+    centralLay->addWidget(stack_, 1);
+
+    // ---- 第 0 页：首页 ----
+    home_ = new HomeWidget(stack_);
+    stack_->addWidget(home_);
+
+    // ---- 第 1 页：场景选择 ----
+    picker_ = new ScenarioPickerWidget(stack_);
+    stack_->addWidget(picker_);
+
+    // ---- 第 2 页：仿真视图（视口 + 进度条） ----
+    auto* simPage = new QWidget(stack_);
+    auto* layout = new QVBoxLayout(simPage);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    view_ = new ViewportWidget(central);
+    view_ = new ViewportWidget(simPage);
     layout->addWidget(view_, 1);
 
     // 进度条按帧号取值：滑块值就是 FrameId，不必在"百分比 ↔ 帧"之间来回换算，
     // 也不会因为窗口滑动导致映射漂移。
-    auto* timelineRow = new QWidget(central);
+    auto* timelineRow = new QWidget(simPage);
     auto* timelineLayout = new QHBoxLayout(timelineRow);
     timelineLayout->setContentsMargins(6, 0, 6, 4);
     timelineLayout->setSpacing(6);
@@ -171,6 +178,8 @@ void MainWindow::buildUi() {
     timelineLayout->addWidget(latestButton);
 
     layout->addWidget(timelineRow);
+
+    stack_->addWidget(simPage);
 
     setCentralWidget(central);
 
@@ -190,6 +199,11 @@ void MainWindow::buildUi() {
 
 void MainWindow::wireSignals() {
     connect(tick_, &QTimer::timeout, this, &MainWindow::onTick);
+
+    connect(home_, &HomeWidget::scenarioModeRequested, this, &MainWindow::onScenarioMode);
+    connect(home_, &HomeWidget::sandboxRequested, this, &MainWindow::onSandbox);
+    connect(picker_, &ScenarioPickerWidget::scenarioChosen, this, &MainWindow::onScenarioChosen);
+    connect(picker_, &ScenarioPickerWidget::backRequested, this, &MainWindow::onBackHome);
 
     connect(view_, &ViewportWidget::viewportChanged, this,
             [this](const domain::Viewport& vp) {
@@ -249,7 +263,10 @@ void MainWindow::setGatewayInfo(bool listening, const QString& note) {
 
 void MainWindow::loadScenarioFile(const QString& path) {
     scenarioPath_ = path;
-    applyLoadedScenario(path);
+    if (applyLoadedScenario(path)) {
+        // 命令行/外部指定场景时不经过首页，直接进仿真视图。
+        showSimView();
+    }
 }
 
 bool MainWindow::applyLoadedScenario(const QString& path) {
@@ -472,13 +489,66 @@ void MainWindow::onClearGhosts() {
     refreshStatus();
 }
 
+void MainWindow::onScenarioMode() {
+    populatePicker();
+    stack_->setCurrentIndex(1);
+    toolbar_->setVisible(false);
+    statusBar()->setVisible(false);
+}
+
+void MainWindow::showScenarioPicker() {
+    onScenarioMode();
+}
+
+void MainWindow::populatePicker() {
+    std::vector<ScenarioPickerWidget::Entry> entries;
+    for (auto& s : scenarios_.listAvailable()) {
+        // 沙盒单独走首页的「自由沙盒」入口，不混进预设场景列表。
+        if (s.id == "sandbox") {
+            continue;
+        }
+        ScenarioPickerWidget::Entry e;
+        e.id = std::move(s.id);
+        e.name = QString::fromStdString(s.name);
+        e.description = QString::fromStdString(s.description);
+        e.tmpl = std::move(s.tmpl);
+        entries.push_back(std::move(e));
+    }
+    picker_->setEntries(std::move(entries));
+}
+
+void MainWindow::onScenarioChosen(const QString& id) {
+    // 场景选择页给的是文件名（无扩展名，如 "following_lead"），补回 .json 再加载。
+    const QString path = id.endsWith(QLatin1String(".json"))
+                             ? id
+                             : id + QLatin1String(".json");
+    if (!applyLoadedScenario(path)) {
+        return;
+    }
+    sim_.start();   // 从选择页进入即开始仿真
+    showSimView();
+}
+
+void MainWindow::onBackHome() {
+    stack_->setCurrentIndex(0);
+    toolbar_->setVisible(false);
+    statusBar()->setVisible(false);
+}
+
+void MainWindow::showSimView() {
+    stack_->setCurrentIndex(2);
+    toolbar_->setVisible(true);
+    statusBar()->setVisible(true);
+}
+
 void MainWindow::onSandbox() {
-    // 沙盒走场景文件而不是内置模板：场地参数（车道数、雷达量程）应当和别的场景
-    // 一样可改可版本化，写死在代码里就只能重编译。
+    // 沙盒走场景文件而不是内置模板：场地参数（车道数、雷达量程、分段道路）
+    // 应当和别的场景一样可改可版本化，写死在代码里就只能重编译。
     const QString path = QDir(QCoreApplication::applicationDirPath())
                              .absoluteFilePath(QStringLiteral("../scenarios/sandbox.json"));
     if (applyLoadedScenario(path)) {
         sim_.start();   // 沙盒载入即跑，不必再按一次播放
+        showSimView();
     }
 }
 

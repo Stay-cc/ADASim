@@ -11,6 +11,8 @@ class QSlider;
 class QComboBox;
 class QTimer;
 class QAction;
+class QStackedWidget;
+class QToolBar;
 
 namespace adasim::app {
 class SimController;
@@ -25,6 +27,8 @@ class QtRenderer;
 namespace adasim::ui {
 
 class ViewportWidget;
+class HomeWidget;
+class ScenarioPickerWidget;
 
 /// 主窗口：只做编排与显示，不实现任何仿真逻辑。
 ///
@@ -53,6 +57,9 @@ public:
     /// 启动时载入的场景文件；为空则使用内置的跟车场景。
     void loadScenarioFile(const QString& path);
 
+    /// 跳到场景选择页（供命令行 --picker 与测试出图使用）。
+    void showScenarioPicker();
+
 signals:
     /// 第一帧真正贴到控件上时发一次。
     /// 冷启动时间必须量到这一帧：窗口 show() 之后到首帧之间还有场景加载、
@@ -79,15 +86,31 @@ private:
     void onInjectAt(const QPoint& pos);
     void onRunExperiment();
 
+    /// 首页入口：进入场景选择页 / 进入沙盒。
+    void onScenarioMode();
+    void onScenarioChosen(const QString& id);
+    void onBackHome();
+    /// 切到仿真视图页。
+    void showSimView();
+
     /// 把视口中心移到自车位置。跟随关闭时不做任何事。
     void centerOnEgo();
+
+    /// 从场景仓储收集预设场景，填进场景选择页。
+    void populatePicker();
 
     app::SimController& sim_;
     app::ScenarioService& scenarios_;
     app::ExperimentRunner& runner_;
     infra::QtRenderer& renderer_;
 
+    /// 三页：0 首页，1 场景选择，2 仿真视图。
+    QStackedWidget* stack_{nullptr};
+    HomeWidget* home_{nullptr};
+    ScenarioPickerWidget* picker_{nullptr};
+
     ViewportWidget* view_{nullptr};
+    QToolBar* toolbar_{nullptr};
     QSlider* timeline_{nullptr};
     QComboBox* speedBox_{nullptr};
     QLabel* frameLabel_{nullptr};

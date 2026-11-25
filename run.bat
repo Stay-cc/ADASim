@@ -4,8 +4,8 @@ title ADASim Launcher
 
 rem ============================================================
 rem  ADASim one-click launcher: base station + algorithm process
-rem  Default scenario: following_lead.json
-rem  Drag a .json onto this file to run a different scenario
+rem  Double-click: opens home screen (scenario picker / sandbox).
+rem  Drag a .json onto this file to launch that scenario directly.
 rem ============================================================
 
 rem ---- 1. Locate project root (this bat's directory) ----
@@ -22,8 +22,8 @@ if exist "C:\Users\26468\.workbuddy\binaries\python\versions\3.13.12\python.exe"
     set "PY=C:\Users\26468\.workbuddy\binaries\python\versions\3.13.12\python.exe"
 )
 
-rem ---- 4. Scenario: use dragged file if any, else default ----
-set "SCENE=scenarios\following_lead.json"
+rem ---- 4. Scenario: only when a .json is dragged onto this file ----
+set "SCENE="
 if not "%~1"=="" set "SCENE=%~1"
 
 rem ---- 5. Kill leftover processes to free port 45100 ----
@@ -33,8 +33,13 @@ taskkill /F /IM python.exe   >nul 2>&1
 ping -n 2 127.0.0.1 >nul
 
 rem ---- 6. Launch base station (separate window, server must listen first) ----
-echo [START] base station: %SCENE%
-start "ADASim Base" build\qt\bin\adasim.exe "%SCENE%"
+if "%SCENE%"=="" (
+    echo [START] base station: home screen
+    start "ADASim Base" build\qt\bin\adasim.exe
+) else (
+    echo [START] base station: %SCENE%
+    start "ADASim Base" build\qt\bin\adasim.exe "%SCENE%"
+)
 
 rem ---- 7. Wait for base station to listen on port 45100 (up to 15s) ----
 echo [START] waiting for base station...
@@ -59,7 +64,7 @@ start "ADASim Algorithm" "%PY%" python\run.py --cruise 11
 
 echo.
 echo Done. Two windows opened:
-echo   Base window       - simulation view (HUD shows algorithm online state)
+echo   Base window       - home screen; pick a scenario or enter sandbox
 echo   Algorithm window  - prints status every second; close it to stop
 echo.
 echo To stop: close both windows, or double-click this file again to clean and restart.

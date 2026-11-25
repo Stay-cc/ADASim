@@ -104,22 +104,31 @@ Python 侧是**纯标准库**（连 numpy 都不需要），装了 Python ≥ 3.
 底座命令行：
 
 ```bash
-adasim scenarios/curve_tracking.json          # 指定场景启动
-adasim scenarios/sandbox.json                 # 无尽沙盒：空路面，右键注入目标
-adasim --shot out.png --shot-delay 8000       # 跑 8 秒截图退出，用于无人值守取图
+adasim                                          # 不带场景：进入首页（两个入口）
+adasim scenarios/curve_tracking.json            # 指定场景启动，跳过首页
+adasim --picker --shot out.png                  # 直接进场景选择页（截图/测试用）
+adasim --shot out.png --shot-delay 8000         # 跑 8 秒截图退出，用于无人值守取图
 adasim --record out/frames --frames 16 --interval 700 \
-       --metrics out/timeseries.csv           # 连续录帧 + 100 ms 采样（Demo 用）
+       --metrics out/timeseries.csv             # 连续录帧 + 100 ms 采样（Demo 用）
 ```
 
-算法进程汇总会给出：状态帧/指令帧数、平均点数、平均计算耗时、最小车距、
-最小 TTC、决策分布，以及横向/航向/速度误差 RMS（`--warmup` 之后开始统计）。
+### 3.0 首页、场景选择与自由沙盒
 
-### 3.0 无尽沙盒与运行时注障
+不带场景参数启动时，先停在**首页**，两个入口：
 
-工具栏点「沙盒」进入空路面（`scenarios/sandbox.json`，`openWorld`），**右键点视口任意位置**
-就在那里注入一个虚拟目标：默认轿车，按住 Shift 是卡车、Ctrl 是行人。工具栏「清除注入」一键清空。
+- **模拟场景**：进入场景选择页，10 个预设场景以卡片网格列出，每张卡片带一张俯视缩略图
+  （按道路曲率与参与者位姿画的道路+车简笔），点卡片即加载并开始仿真。
+- **自由沙盒**：直接进入超大地图（`scenarios/sandbox.json`）。
 
-这套东西的要点不是"多画一个障碍"，而是**雷达欺骗**：注入的目标
+**自由沙盒是一张分段道路的超大地图**，不再是单一曲率的无限直道。`roadSegments` 字段定义
+多个路段（直道 / 左弯 / 右弯 / 多车道）按里程拼接，自车开过不同路段时曲率与车道几何随之
+变化，物理、渲染、算法三方都按当前路段计算（算法侧用路径积分定位参考点，弯道段圆心不再
+假设在世界原点）。默认地图 6 段、总长 1.1 km：3 车道直道 → 左弯 → 右弯（S 弯）→ 4 车道直道 →
+左弯 → 直道。右键点视口任意位置注入目标（默认轿车，Shift 卡车、Ctrl 行人），「清除注入」清空。
+
+### 3.0.1 运行时注障（雷达欺骗）
+
+右键注入的目标，要点不是"多画一个障碍"，而是**雷达欺骗**：
 
 - 会进激光雷达的点云（轮廓点与真实障碍物同一条采样公式、同一条距离衰减）；
 - **不会**进 `StatePacket.obstacles`（真值列表），也不参与物理推进与碰撞。
@@ -135,7 +144,7 @@ adasim scenarios/sandbox.json --inject "50,0"             # 自车前方 50 m �
 adasim scenarios/sandbox.json --inject "40,-3.5,truck" --inject-delay 2500   # 2.5 秒后注入到邻道
 ```
 
-### 3.0.1 回放与 HUD
+### 3.0.2 回放与 HUD
 
 - 底部进度条按帧号取值，**拖拽即回看**、随时暂停。回看不销毁记录（`previewSeek`），
   按播放才从当前位置另起一支（`start()` 截断）。「回到最新」跳回录制末尾。

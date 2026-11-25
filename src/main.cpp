@@ -43,10 +43,20 @@ int main(int argc, char** argv) {
     // ---- L4 基础设施：全部是端口的具体实现 ----
     adasim::infra::SteadyClock clock;
     adasim::infra::ConsoleLogger logger;
-    adasim::infra::JsonScenarioRepository scenarios(
-        QDir(QCoreApplication::applicationDirPath())
-            .absoluteFilePath(QStringLiteral("../scenarios"))
-            .toStdString());
+    // 场景目录相对可执行文件上三级（bin → build → 项目根 → scenarios）。
+    // 早先写成 ../scenarios，从 build/*/bin 运行时指向 build/*/scenarios，
+    // 目录不存在，导致 listTemplates() 返回空——命令行传绝对路径时被掩盖了，
+    // 场景选择页一依赖它才暴露。找不到时退回相对当前工作目录的 scenarios，
+    // 兼容"在项目根跑 exe"与"换部署位置"两种情形。
+    const QString exeDir = QCoreApplication::applicationDirPath();
+    QString scenarioRoot = QDir(exeDir).absoluteFilePath(QStringLiteral("../../../scenarios"));
+    if (!QDir(scenarioRoot).exists()) {
+        scenarioRoot = QDir(exeDir).absoluteFilePath(QStringLiteral("../scenarios"));
+    }
+    if (!QDir(scenarioRoot).exists()) {
+        scenarioRoot = QDir::current().absoluteFilePath(QStringLiteral("scenarios"));
+    }
+    adasim::infra::JsonScenarioRepository scenarios(scenarioRoot.toStdString());
     adasim::infra::TcpUdpGateway gateway;
     adasim::infra::QtRenderer renderer;
 
@@ -123,6 +133,7 @@ int main(int argc, char** argv) {
     // 与右键走的是同一个 SimController::injectGhost。
     QStringList injectSpecs;
     int injectDelayMs = 0;
+    bool showPicker = false;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -143,6 +154,8 @@ int main(int argc, char** argv) {
             injectSpecs.push_back(args.at(++i));
         } else if (a == QLatin1String("--inject-delay") && i + 1 < args.size()) {
             injectDelayMs = std::max(0, args.at(++i).toInt());
+        } else if (a == QLatin1String("--picker")) {
+            showPicker = true;
         } else if (!a.startsWith(QLatin1String("--"))) {
             scenarioPath = a;
         }
@@ -154,6 +167,9 @@ int main(int argc, char** argv) {
         // 若沿用相对路径，`adasim scenarios/x.json` 会被拼成
         // <场景目录>/scenarios/x.json 而加载失败，界面则静默退回默认场景。
         window.loadScenarioFile(QFileInfo(scenarioPath).absoluteFilePath());
+    } else if (showPicker) {
+        // 直接跳到场景选择页：截图/测试场景选择页布局用。
+        window.showScenarioPicker();
     }
 
     if (!injectSpecs.isEmpty()) {

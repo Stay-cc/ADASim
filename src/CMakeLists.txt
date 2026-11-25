@@ -35,6 +35,8 @@ add_subdirectory(batch)
 # 表现层不单独成库：它只能被最终可执行程序使用，不允许被其他目标依赖
 set(ADASIM_PRESENTATION_SOURCES
     presentation/MainWindow.cpp
+    presentation/HomeWidget.cpp
+    presentation/ScenarioPickerWidget.cpp
     presentation/ViewportWidget.cpp
     main.cpp)
 
