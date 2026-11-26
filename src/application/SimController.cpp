@@ -220,6 +220,8 @@ void SimController::publish() {
     sp.roadSegments = current_.roadSegments;
     sp.egoOdometer = current_.egoOdometer;
     sp.egoTargetLateral = current_.egoTargetLateral;
+    sp.laneCount = current_.laneCount;
+    sp.laneWidth = current_.laneWidth;
     // 只发真实参与者。注入目标（ghosts）刻意不发真值：
     // 算法若能从真值列表里读到凭空出现的障碍，注入就变成了"给答案"，
     // 测不出感知链路到底有没有在工作。它只能从点云里被聚类出来。

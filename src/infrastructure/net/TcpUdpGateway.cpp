@@ -143,6 +143,8 @@ void TcpUdpGateway::publishState(const domain::StatePacket& packet) {
     root.insert(QStringLiteral("curvature"), packet.curvature);
     root.insert(QStringLiteral("odometer"), packet.egoOdometer);
     root.insert(QStringLiteral("targetLateral"), packet.egoTargetLateral);
+    root.insert(QStringLiteral("laneCount"), packet.laneCount);
+    root.insert(QStringLiteral("laneWidth"), packet.laneWidth);
 
     // 分段道路（超大地图）：逐段下发。为空则数组为空，算法侧回退到单曲率。
     QJsonArray segs;

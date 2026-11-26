@@ -35,6 +35,11 @@ struct StatePacket {
     /// 自车目标车道中心相对道路中心线的横向偏移。算法侧用它偏移参考路径，
     /// 使自车保持在初始车道中心，而不是压着道路中心线（2 车道即分界线）。
     double egoTargetLateral{0.0};
+    /// 道路车道数与车道宽。变道避障需要知道邻道是否存在、邻道中心在哪。
+    /// 单曲率场景 roadSegments 为空，靠这两个顶层字段；分段场景可由当前段
+    /// 覆盖，但为简单起见统一用顶层值（底座已按当前段写回 state）。
+    int laneCount{2};
+    double laneWidth{3.5};
     std::vector<EntityState> obstacles;
 };
 

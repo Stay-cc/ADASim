@@ -73,6 +73,9 @@ class StateFrame:
     # 自车目标车道中心相对道路中心线的横向偏移。横向控制跟踪此偏移，
     # 使自车保持在初始车道中心而非压着道路中心线。
     target_lateral: float = 0.0
+    # 道路车道数与车道宽，变道避障据此判断邻道是否存在及邻道中心位置。
+    lane_count: int = 2
+    lane_width: float = 3.5
     ack_seq: int = -1
 
 
@@ -145,6 +148,8 @@ def parse_state(payload: bytes) -> StateFrame | None:
         curvature = float(obj.get("curvature", 0.0))
         odometer = float(obj.get("odometer", 0.0))
         target_lateral = float(obj.get("targetLateral", 0.0))
+        lane_count = int(obj.get("laneCount", 2))
+        lane_width = float(obj.get("laneWidth", 3.5))
         ack_seq = int(obj.get("ackSeq", -1))
     except (TypeError, ValueError):
         return None
@@ -163,7 +168,9 @@ def parse_state(payload: bytes) -> StateFrame | None:
     return StateFrame(frame=frame, sim_time=sim_time, ego=ego,
                       obstacles=obstacles, curvature=curvature,
                       road_segments=road_segments, odometer=odometer,
-                      target_lateral=target_lateral, ack_seq=ack_seq)
+                      target_lateral=target_lateral,
+                      lane_count=lane_count, lane_width=lane_width,
+                      ack_seq=ack_seq)
 
 
 def encode_command(seq: int, frame: int, sim_time: float,

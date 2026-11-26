@@ -198,9 +198,10 @@ def self_test() -> bool:
     check("速度估计", ok, f"v = {tracks[0].speed:.2f} m/s" if tracks else "无航迹")
 
     # ---- 8. IDM：有前车应减速，无前车应加速 ----
+    # 显式关闭变道避障：这个用例只考纵向 IDM，变道是独立能力，另有用例。
     from adasim_algo.protocol import EgoState
 
-    planner = Planner(PlanningConfig())
+    planner = Planner(PlanningConfig(lane_change_enabled=False))
     ego = EgoState(0.0, 0.0, 0.0, 8.0)
     lead = Track(id=1, x=18.0, y=0.0, theta=0.0, vx=4.2, vy=0.0,
                  length=4.5, width=1.9, hits=9)
@@ -210,6 +211,21 @@ def self_test() -> bool:
           f"{plan_follow.reason} a={plan_follow.accel:.2f}")
     check("空域加速", plan_free.reason == "cruise" and plan_free.accel > 0.0,
           f"{plan_free.reason} a={plan_free.accel:.2f}")
+
+    # ---- 8.5 变道避障：前车慢且邻道安全 → 切换目标车道 ----
+    planner_lc = Planner(PlanningConfig())
+    # 2 车道：车道中心 -1.75 / +1.75。自车与慢速前车都在左道（lane 0），
+    # 右道（lane 1）无车 → 应触发变道到 lane 1。变道有 1 s 确认迟滞，
+    # 故连续推进两帧（sim_time 0 → 2）再断言。
+    ego_lc = EgoState(0.0, -1.75, 0.0, 8.0)
+    lead_slow = Track(id=1, x=18.0, y=-1.75, theta=0.0, vx=4.2, vy=0.0,
+                      length=4.5, width=1.9, hits=9)
+    planner_lc.plan(ego_lc, [lead_slow], 0.02, lane_count=2, lane_width=3.5,
+                    sim_time=0.0)
+    plan_lc = planner_lc.plan(ego_lc, [lead_slow], 0.02, lane_count=2,
+                              lane_width=3.5, sim_time=2.0)
+    check("变道避障", plan_lc.target_lane == 1,
+          f"目标车道={plan_lc.target_lane} reason={plan_lc.reason}")
 
     # ---- 9. 走廊判定：邻道车辆不应当作前车 ----
     beside = Track(id=2, x=10.0, y=3.5, theta=0.0, vx=4.0, vy=0.0,

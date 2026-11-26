@@ -92,6 +92,15 @@ class PlanningConfig:
     steer_tau: float = 0.12         # 转向执行器一阶时间常数，s
     wheel_base: float = 2.7         # 轴距，m；弯道前馈转角 δ = atan(L·κ)
 
+    # ---- 变道避障 ----
+    lane_change_enabled: bool = True       # 是否允许变道避障
+    lane_change_gap: float = 25.0          # 触发变道的前车净距阈值，m；小于此且前车慢即考虑变道
+    lane_change_lookahead: float = 40.0    # 检查邻道前方多远无车，m
+    lane_change_lookback: float = 15.0     # 检查邻道后方多远无车，m
+    lane_change_cooldown: float = 3.0      # 一次变道后的冷却时长，s；避免来回切换
+    lane_change_align: float = 1.0         # 变道过程中，横向误差小于此值视为"已到新车道"，m
+    lane_change_confirm: float = 1.0       # 连续观察到慢车/近车这么久才变道，s；抑制单帧冲动
+
 
 @dataclass(slots=True)
 class Plan:
@@ -102,6 +111,8 @@ class Plan:
     gap: float
     ttc: float
     reason: str
+    # 当前目标车道索引（变道避障状态机维护）。供 HUD/日志展示与诊断。
+    target_lane: int = 0
     # 本帧的参考路径偏差，供实验章节统计横向/航向误差 RMS。
     # 放在 Plan 里而不是另开一条测量通道：它就是控制器本帧看到的量，
     # 事后另算一遍反而可能和控制器用的口径不一致。
@@ -119,26 +130,95 @@ def predict_position(track: Track, horizon: float) -> tuple[float, float]:
 
 
 class Planner:
-    """单帧决策。内部保存上一步的转角，用于执行器滞后。"""
+    """单帧决策。内部保存上一步的转角，用于执行器滞后，以及变道避障的目标车道状态。"""
 
-    __slots__ = ("cfg", "_steer")
+    __slots__ = ("cfg", "_steer", "_target_lane", "_lane_initialized", "_last_change_time",
+                 "_slow_since", "_changing")
 
     def __init__(self, cfg: PlanningConfig | None = None) -> None:
         self.cfg = cfg or PlanningConfig()
         self._steer = 0.0
+        # 目标车道索引。初始 -1 表示"尚未从状态帧初始化"，首帧用下发
+        # 的 target_lateral 反推。变道避障会修改它。
+        self._target_lane: int = -1
+        self._lane_initialized = False
+        self._last_change_time: float = -1e9
+        self._slow_since: float = -1e9   # 开始观察到"需变道"的时刻，用于确认迟滞
+        self._changing: bool = False     # 是否正在变道（目标车道切换后、未对齐前）
 
     def reset(self) -> None:
         self._steer = 0.0
+        self._target_lane = -1
+        self._lane_initialized = False
+        self._last_change_time = -1e9
+        self._slow_since = -1e9
+        self._changing = False
 
     def plan(self, ego, tracks: list[Track], dt: float,
              curvature: float = 0.0,
              road_segments: list | None = None,
              odometer: float = 0.0,
-             target_lateral: float = 0.0) -> Plan:
+             target_lateral: float = 0.0,
+             lane_count: int = 2,
+             lane_width: float = 3.5,
+             sim_time: float = 0.0) -> Plan:
         cfg = self.cfg
+
+        # ---- 车道几何 ----
+        # 车道中心序列：i ∈ [0, laneCount)，中心 y = -half + (i+0.5)*laneW。
+        lanes = max(1, lane_count)
+        lw = lane_width if lane_width > 0.5 else 3.5
+        half = lanes * lw * 0.5
+
+        def lane_center(i: int) -> float:
+            return -half + (i + 0.5) * lw
+
+        # 首帧用下发的 target_lateral 反推目标车道；之后由本状态机维护。
+        if not self._lane_initialized:
+            self._target_lane = self._nearest_lane(target_lateral, lanes, lw, half)
+            self._lane_initialized = True
 
         lead, gap, lead_speed = select_lead(ego, tracks, cfg)
 
+        # ---- 变道避障决策 ----
+        # 条件：允许变道 + 有前车 + 前车够近且比我慢 + 冷却期已过。
+        # "够近"与"够慢"是 AND：远距离的慢车先正常跟驰接近，不必急着变道；
+        # 只有接近到会实质拖慢我时，才评估变道。
+        # 再加确认迟滞：连续观察到"需变道"超过 lane_change_confirm 秒才动手，
+        # 抑制单帧感知抖动或刚起步时的冲动变道。
+        want_change = False
+        if cfg.lane_change_enabled and lead is not None:
+            too_close = gap < cfg.lane_change_gap
+            too_slow = lead_speed < ego.speed - 0.5   # 前车明显慢于我
+            cooled = (sim_time - self._last_change_time) >= cfg.lane_change_cooldown
+            if too_close and too_slow and cooled:
+                if self._slow_since < 0.0:
+                    self._slow_since = sim_time
+                if sim_time - self._slow_since >= cfg.lane_change_confirm:
+                    want_change = True
+            else:
+                self._slow_since = -1e9   # 条件不满足，重置确认计时
+
+        if want_change:
+            new_lane = self._pick_lane(ego, tracks, self._target_lane, lanes, lw,
+                                       half, cfg)
+            if new_lane != self._target_lane:
+                self._target_lane = new_lane
+                self._last_change_time = sim_time
+                self._slow_since = -1e9
+                self._changing = True
+
+        # 目标车道中心即横向参考偏移。
+        lateral = lane_center(self._target_lane)
+
+        # 变道状态：对齐到目标车道中心后结束。用显式 _changing 标志而非
+        # "位置离目标车道远"判断——后者会把"初始不在车道中心"的静态偏差也
+        # 误判成变道中。
+        if self._changing and abs(ego.y - lateral) <= cfg.lane_change_align:
+            self._changing = False
+        changing = self._changing
+
+        # ---- 纵向 ----
         if lead is None:
             accel = _speed_control(ego.speed, cfg.cruise_speed, cfg)
             reason = "cruise"
@@ -147,20 +227,17 @@ class Planner:
         else:
             accel = idm_accel(ego.speed, cfg.cruise_speed, gap, lead_speed, cfg)
             reason = "follow"
-            # 跟驰稳态就是前车速度：目标车速取 min(巡航, 前车)，速度误差
-            # 才有明确的参考量。若一律用巡航车速，跟一辆 4 m/s 的慢车时
-            # 会持续显示 7 m/s 的"误差"，那是工况而不是跟踪质量。
             target_speed = min(cfg.cruise_speed, max(0.0, lead_speed))
             ttc = gap / (ego.speed - lead_speed) if ego.speed > lead_speed + 0.05 else math.inf
             if gap < 1.0:
-                # 已经贴上了：IDM 的二次项会给出巨大的负值，这里单独限幅，
-                # 避免日志里出现 -180 m/s^2 这种没有物理意义的读数。
                 accel = -cfg.decel_max
                 reason = "emergency"
+        if changing:
+            reason = "lane_change"
 
         accel = max(-cfg.decel_max, min(cfg.accel_max, accel))
         steer, cross_track, heading_error = self._track_path(
-            ego, dt, curvature, road_segments, odometer, target_lateral)
+            ego, dt, curvature, road_segments, odometer, lateral)
 
         return Plan(
             accel=accel,
@@ -170,9 +247,61 @@ class Planner:
             gap=gap,
             ttc=ttc,
             reason=reason,
+            target_lane=self._target_lane,
             lat_error=cross_track,
             heading_error=heading_error,
         )
+
+    @staticmethod
+    def _nearest_lane(lateral: float, lanes: int, lw: float, half: float) -> int:
+        """把横向偏移归位到最近车道索引。"""
+        best = 0
+        best_d = math.inf
+        for i in range(lanes):
+            d = abs((-half + (i + 0.5) * lw) - lateral)
+            if d < best_d:
+                best_d = d
+                best = i
+        return best
+
+    def _pick_lane(self, ego, tracks, cur_lane: int, lanes: int, lw: float,
+                   half: float, cfg: PlanningConfig) -> int:
+        """选择变道目标车道：优先左邻道、其次右邻道，要求邻道前后安全且车道存在。
+
+        邻道安全 = 该车道内 [自车后方 lookback, 前方 lookahead] 纵向范围内没有车。
+        """
+        # 优先左邻（i-1），其次右邻（i+1）。
+        for cand in (cur_lane - 1, cur_lane + 1):
+            if cand < 0 or cand >= lanes:
+                continue
+            if self._lane_clear(ego, tracks, cand, lw, half, cfg):
+                return cand
+        return cur_lane
+
+    @staticmethod
+    def _lane_clear(ego, tracks, lane: int, lw: float, half: float,
+                    cfg: PlanningConfig) -> bool:
+        """判断某车道在自车前后一段范围内是否有车。
+
+        用"该车道的中心线"判定：目标车的横向位置相对该车道中心的距离小于
+        半个车宽 + 余量，即视为占用该车道；纵向投影落在 [lookback, lookahead]
+        内即不安全。
+        """
+        lane_y = -half + (lane + 0.5) * lw
+        cos_t = math.cos(ego.theta)
+        sin_t = math.sin(ego.theta)
+        for tr in tracks:
+            # 横向：目标相对该车道中心的距离
+            lateral = tr.y - lane_y
+            if abs(lateral) > 0.5 * (cfg.ego_width + tr.width) + cfg.corridor_margin:
+                continue
+            # 纵向：相对自车的纵向投影
+            dx = tr.x - ego.x
+            dy = tr.y - ego.y
+            lx = dx * cos_t + dy * sin_t
+            if -cfg.lane_change_lookback <= lx <= cfg.lane_change_lookahead:
+                return False
+        return True
 
     def _track_path(self, ego, dt: float,
                     curvature: float = 0.0,

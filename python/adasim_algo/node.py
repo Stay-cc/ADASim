@@ -265,16 +265,21 @@ class AlgoNode:
         dt = 0.02
         plan = self.planner.plan(state.ego, tracks, dt, state.curvature,
                                  state.road_segments, state.odometer,
-                                 state.target_lateral)
+                                 state.target_lateral,
+                                 state.lane_count, state.lane_width,
+                                 state.sim_time)
         self.last_plan = plan
         self.last_track_count = len(tracks)
 
         # 闭环精度取真值位姿与参考路径的偏差：控制器输出的转角是手段，
         # 车实际偏离参考线多少才是要考核的结果。统计只从 warmup 之后开始。
+        # 变道（lane_change）期间的横向偏差是"目标车道切换"的有意横向位移，
+        # 不是跟踪失败，计入误差会把一次 3.5 m 的正常变道误读成跟踪崩了。
         if state.sim_time >= self.warmup_seconds:
-            self.lat_sq_total += plan.lat_error * plan.lat_error
-            self.lat_peak = max(self.lat_peak, plan.lat_error)
-            self.heading_sq_total += plan.heading_error * plan.heading_error
+            if plan.reason != "lane_change":
+                self.lat_sq_total += plan.lat_error * plan.lat_error
+                self.lat_peak = max(self.lat_peak, plan.lat_error)
+                self.heading_sq_total += plan.heading_error * plan.heading_error
             speed_error = state.ego.speed - plan.target_speed
             self.speed_sq_total += speed_error * speed_error
             self.error_frames += 1
