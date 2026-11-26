@@ -16,7 +16,7 @@
     {
       "type": "truck",
       "x": 70.0,
-      "y": 0.0,
+      "y": 1.75,
       "theta": 0.0,
       "speed": 0.0,
       "behavior": "constant",
@@ -24,7 +24,22 @@
     }
   ],
   "parameters": [
-    { "name": "ego_speed", "min": 8.0, "max": 16.0, "step": 0.5 },
-    { "name": "lead_gap", "min": 40.0, "max": 90.0, "step": 5.0 }
-  ]
+    {
+      "name": "ego_speed",
+      "min": 8.0,
+      "max": 16.0,
+      "step": 0.5
+    },
+    {
+      "name": "lead_gap",
+      "min": 40.0,
+      "max": 90.0,
+      "step": 5.0
+    }
+  ],
+  "egoPose": {
+    "x": 0,
+    "y": 1.75,
+    "theta": 0
+  }
 }

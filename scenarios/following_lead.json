@@ -10,14 +10,14 @@
   "egoSpeed": 8.0,
   "egoPose": {
     "x": 0.0,
-    "y": 0.3,
+    "y": 1.75,
     "theta": 0.0
   },
   "actors": [
     {
       "type": "car",
       "x": 25.0,
-      "y": 0.0,
+      "y": 1.75,
       "theta": 0.0,
       "speed": 4.2,
       "behavior": "car_following",

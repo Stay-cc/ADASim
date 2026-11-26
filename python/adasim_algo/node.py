@@ -264,7 +264,8 @@ class AlgoNode:
 
         dt = 0.02
         plan = self.planner.plan(state.ego, tracks, dt, state.curvature,
-                                 state.road_segments, state.odometer)
+                                 state.road_segments, state.odometer,
+                                 state.target_lateral)
         self.last_plan = plan
         self.last_track_count = len(tracks)
 

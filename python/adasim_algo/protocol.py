@@ -70,6 +70,9 @@ class StateFrame:
     road_segments: list = field(default_factory=list)
     # 自车沿道路里程，用于在分段道路上定位参考点。
     odometer: float = 0.0
+    # 自车目标车道中心相对道路中心线的横向偏移。横向控制跟踪此偏移，
+    # 使自车保持在初始车道中心而非压着道路中心线。
+    target_lateral: float = 0.0
     ack_seq: int = -1
 
 
@@ -141,6 +144,7 @@ def parse_state(payload: bytes) -> StateFrame | None:
         sim_time = float(obj.get("t", 0.0))
         curvature = float(obj.get("curvature", 0.0))
         odometer = float(obj.get("odometer", 0.0))
+        target_lateral = float(obj.get("targetLateral", 0.0))
         ack_seq = int(obj.get("ackSeq", -1))
     except (TypeError, ValueError):
         return None
@@ -159,7 +163,7 @@ def parse_state(payload: bytes) -> StateFrame | None:
     return StateFrame(frame=frame, sim_time=sim_time, ego=ego,
                       obstacles=obstacles, curvature=curvature,
                       road_segments=road_segments, odometer=odometer,
-                      ack_seq=ack_seq)
+                      target_lateral=target_lateral, ack_seq=ack_seq)
 
 
 def encode_command(seq: int, frame: int, sim_time: float,

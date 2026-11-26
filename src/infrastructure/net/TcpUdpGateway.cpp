@@ -142,6 +142,7 @@ void TcpUdpGateway::publishState(const domain::StatePacket& packet) {
     // 显式给 0 才能把"直道"与"老版本底座不发这个字段"区分开。
     root.insert(QStringLiteral("curvature"), packet.curvature);
     root.insert(QStringLiteral("odometer"), packet.egoOdometer);
+    root.insert(QStringLiteral("targetLateral"), packet.egoTargetLateral);
 
     // 分段道路（超大地图）：逐段下发。为空则数组为空，算法侧回退到单曲率。
     QJsonArray segs;

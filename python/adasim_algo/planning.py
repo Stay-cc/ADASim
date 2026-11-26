@@ -133,7 +133,8 @@ class Planner:
     def plan(self, ego, tracks: list[Track], dt: float,
              curvature: float = 0.0,
              road_segments: list | None = None,
-             odometer: float = 0.0) -> Plan:
+             odometer: float = 0.0,
+             target_lateral: float = 0.0) -> Plan:
         cfg = self.cfg
 
         lead, gap, lead_speed = select_lead(ego, tracks, cfg)
@@ -159,7 +160,7 @@ class Planner:
 
         accel = max(-cfg.decel_max, min(cfg.accel_max, accel))
         steer, cross_track, heading_error = self._track_path(
-            ego, dt, curvature, road_segments, odometer)
+            ego, dt, curvature, road_segments, odometer, target_lateral)
 
         return Plan(
             accel=accel,
@@ -176,17 +177,20 @@ class Planner:
     def _track_path(self, ego, dt: float,
                     curvature: float = 0.0,
                     road_segments: list | None = None,
-                    odometer: float = 0.0) -> tuple[float, float, float]:
+                    odometer: float = 0.0,
+                    target_lateral: float = 0.0) -> tuple[float, float, float]:
         """Stanley 横向控制，参考路径由道路几何决定。
 
+        参考路径 = 道路中心线 + target_lateral（自车目标车道中心相对道路中心
+        线的横向偏移）。横向控制跟踪的是"目标车道中心"，而不是道路中心线——
+        2 车道时道路中心线恰是分界线，跟踪它必然压线。
+
         分两种道路：
-        * 单曲率场景（road_segments 为空）：直道参考 y = 0；弯道按圆弧，
-          圆心在 (0, R)，R = 1/κ。
+        * 单曲率场景（road_segments 为空）：直道参考 y = target_lateral；
+          弯道按圆弧，圆心在 (0, R)，半径按 target_lateral 偏移。
         * 分段道路（road_segments 非空）：用路径积分求"自车里程处的中心线
-          位姿 (xc, yc, θc) 与当前段曲率 κc"，横向偏差取自车到中心线切线的
-          有符号距离。这是分段地图正确性的关键——弯道段的圆心不在世界原点，
-          沿用"圆心在原点"的圆弧会把参考路径画到错误位置，横向误差会假性
-          爆炸（实测 RMS 28 m，而车其实跟得不错）。
+          位姿 (xc, yc, θc) 与当前段曲率 κc"，再沿法向偏移 target_lateral 得到
+          目标车道中心，横向偏差取自车到目标车道中心切线的有符号距离。
         """
         cfg = self.cfg
 
@@ -202,30 +206,33 @@ class Planner:
             kappa = curvature
 
         if road_segments:
-            # 分段道路：参考是"里程处的中心线点 + 切线"。
+            # 分段道路：参考是"里程处的中心线点 + 切线"，再沿左法向偏移到目标车道中心。
             xc, yc, theta_c = road_pose_at(road_segments, odometer)
+            # 目标车道中心点 = 中心线点 + target_lateral 沿左法向 (-sinθc, cosθc)
+            xc += -math.sin(theta_c) * target_lateral
+            yc += math.cos(theta_c) * target_lateral
             dx = ego.x - xc
             dy = ego.y - yc
-            # 横向偏差：自车相对切线的有符号距离。切线方向 (cosθc, sinθc)，
-            # 左法向为 (-sinθc, cosθc)。正值表示偏左。
+            # 横向偏差：自车相对目标车道中心切线的有符号距离（左正）。
             cross_track_left = -math.sin(theta_c) * dx + math.cos(theta_c) * dy
             # Stanley 口径"正值偏右"，取反。
             cross_track = -cross_track_left
             heading_error = math.atan2(math.sin(theta_c - ego.theta),
                                        math.cos(theta_c - ego.theta))
         elif abs(curvature) < 1e-9:
-            cross_track = -ego.y                 # 横向偏差，正值表示偏右
-            heading_error = -ego.theta           # 目标航向为 0
+            cross_track = -(ego.y - target_lateral)  # 正值表示偏右
+            heading_error = -ego.theta                # 目标航向为 0
         else:
-            radius = 1.0 / curvature             # 有符号：正为左弯
+            radius = 1.0 / curvature                  # 有符号：正为左弯
+            # 目标车道中心的圆弧半径 = |R| + target_lateral（target_lateral 沿
+            # 左法向为正，即"更靠左的车道"半径更大）。圆心仍在 (0, R)。
+            target_radius = abs(radius) + target_lateral
             dx = ego.x - 0.0
             dy = ego.y - radius
             dist = math.hypot(dx, dy)
             # 偏差量取"相对目标半径的外扩量"，再按弯向换算成 Stanley 的
-            # "正值偏右"口径。这里不能写 copysign(dist - |R|, κ)：copysign
-            # 只取第二个参数的符号，结果与偏差大小无关，内外侧会被判反——
-            # 表现为自车越偏越往外打方向，几十米后就甩出路面。
-            cross_track = math.copysign(1.0, curvature) * (dist - abs(radius))
+            # "正值偏右"口径。
+            cross_track = math.copysign(1.0, curvature) * (dist - target_radius)
             tangent = math.atan2(dy, dx) + math.copysign(0.5 * math.pi, curvature)
             heading_error = math.atan2(math.sin(tangent - ego.theta),
                                        math.cos(tangent - ego.theta))

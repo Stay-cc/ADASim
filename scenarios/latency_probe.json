@@ -16,7 +16,7 @@
     {
       "type": "car",
       "x": 40.0,
-      "y": 0.0,
+      "y": 1.75,
       "theta": 0.0,
       "speed": 12.0,
       "behavior": "car_following",
@@ -30,5 +30,10 @@
       "max": 14.0,
       "step": 1.0
     }
-  ]
+  ],
+  "egoPose": {
+    "x": 0,
+    "y": 1.75,
+    "theta": 0
+  }
 }

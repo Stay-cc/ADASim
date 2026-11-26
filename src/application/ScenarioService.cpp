@@ -210,6 +210,32 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     state.simTime = 0.0;
     state.ego = tmpl.egoPose;
 
+    // 自车目标车道：把 egoPose.y 归位到最近车道中心，得到相对道路中心线的
+    // 横向偏移。车道中心序列是 -halfRoad + (i+0.5)*laneW，i = 0..laneCount-1。
+    // 这一步让"自车保持在初始车道中心"成为横向控制的参考，而不是一味跟踪
+    // 道路中心线（2 车道时道路中心线恰是分界线，会压线）。归位后同步改写
+    // ego.y，保证初始姿态就落在车道中心。
+    {
+        const double laneW = tmpl.laneWidth > 0.5 ? tmpl.laneWidth : 3.5;
+        const int lanes = std::max(1, tmpl.laneCount);
+        const double halfRoad = lanes * laneW * 0.5;
+        // 找最近的（车道索引 i，中心 y）
+        int bestIdx = 0;
+        double bestY = -halfRoad + 0.5 * laneW;
+        double bestDist = std::abs(tmpl.egoPose.y - bestY);
+        for (int i = 1; i < lanes; ++i) {
+            const double yc = -halfRoad + (i + 0.5) * laneW;
+            const double d = std::abs(tmpl.egoPose.y - yc);
+            if (d < bestDist) {
+                bestDist = d;
+                bestIdx = i;
+                bestY = yc;
+            }
+        }
+        state.egoTargetLateral = bestY;
+        state.ego.y = bestY;
+    }
+
     double egoSpeed = tmpl.egoSpeed;
     if (!tmpl.egoSpeedExplicit) {
         // 兼容旧场景：早期版本没有 egoSpeed 字段，自车初速只能从

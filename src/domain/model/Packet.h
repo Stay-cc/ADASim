@@ -32,6 +32,9 @@ struct StatePacket {
     std::vector<RoadSegment> roadSegments;
     /// 自车里程，用于算法侧在分段道路上定位当前参考点。
     double egoOdometer{0.0};
+    /// 自车目标车道中心相对道路中心线的横向偏移。算法侧用它偏移参考路径，
+    /// 使自车保持在初始车道中心，而不是压着道路中心线（2 车道即分界线）。
+    double egoTargetLateral{0.0};
     std::vector<EntityState> obstacles;
 };
 
