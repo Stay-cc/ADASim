@@ -100,6 +100,9 @@ class PlanningConfig:
     lane_change_cooldown: float = 3.0      # 一次变道后的冷却时长，s；避免来回切换
     lane_change_align: float = 1.0         # 变道过程中，横向误差小于此值视为"已到新车道"，m
     lane_change_confirm: float = 1.0       # 连续观察到慢车/近车这么久才变道，s；抑制单帧冲动
+    lane_change_lateral_rate: float = 1.2  # 变道时目标车道中心的最大横向移动速率，m/s
+                                           # 平滑变道轨迹的关键：目标不阶跃，而是一步步逼近，
+                                           # 否则 Stanley 对 3.5 m 阶跃会猛打满舵、过冲后振荡
 
 
 @dataclass(slots=True)
@@ -133,7 +136,7 @@ class Planner:
     """单帧决策。内部保存上一步的转角，用于执行器滞后，以及变道避障的目标车道状态。"""
 
     __slots__ = ("cfg", "_steer", "_target_lane", "_lane_initialized", "_last_change_time",
-                 "_slow_since", "_changing")
+                 "_slow_since", "_changing", "_lateral")
 
     def __init__(self, cfg: PlanningConfig | None = None) -> None:
         self.cfg = cfg or PlanningConfig()
@@ -145,6 +148,7 @@ class Planner:
         self._last_change_time: float = -1e9
         self._slow_since: float = -1e9   # 开始观察到"需变道"的时刻，用于确认迟滞
         self._changing: bool = False     # 是否正在变道（目标车道切换后、未对齐前）
+        self._lateral: float = 0.0       # 平滑后的目标横向位置（向车道中心逐步逼近）
 
     def reset(self) -> None:
         self._steer = 0.0
@@ -153,6 +157,7 @@ class Planner:
         self._last_change_time = -1e9
         self._slow_since = -1e9
         self._changing = False
+        self._lateral = 0.0
 
     def plan(self, ego, tracks: list[Track], dt: float,
              curvature: float = 0.0,
@@ -177,6 +182,7 @@ class Planner:
         if not self._lane_initialized:
             self._target_lane = self._nearest_lane(target_lateral, lanes, lw, half)
             self._lane_initialized = True
+            self._lateral = lane_center(self._target_lane)
 
         lead, gap, lead_speed = select_lead(ego, tracks, cfg)
 
@@ -208,8 +214,16 @@ class Planner:
                 self._slow_since = -1e9
                 self._changing = True
 
-        # 目标车道中心即横向参考偏移。
-        lateral = lane_center(self._target_lane)
+        # 目标车道中心即横向参考偏移。变道时不让目标阶跃 3.5 m，而是每帧
+        # 向目标车道中心限速逼近，形成一条平滑变道轨迹——否则 Stanley 对
+        # 3.5 m 阶跃会猛打满舵、过冲后在新车道中心来回振荡（"摇摇晃晃"）。
+        target_center = lane_center(self._target_lane)
+        step = cfg.lane_change_lateral_rate * dt
+        if abs(target_center - self._lateral) <= step:
+            self._lateral = target_center
+        else:
+            self._lateral += step if target_center > self._lateral else -step
+        lateral = self._lateral
 
         # 变道状态：对齐到目标车道中心后结束。用显式 _changing 标志而非
         # "位置离目标车道远"判断——后者会把"初始不在车道中心"的静态偏差也

@@ -203,7 +203,27 @@ void TcpUdpGateway::publishCloud(const domain::PointCloudPacket& packet) {
         return;
     }
     const int total = static_cast<int>(packet.pointCount());
+    // 点数为 0 也必须发一帧"空点云"：算法侧靠"收到一帧空点云"来让感知航迹
+    // 逐帧 miss 并最终删除。若这里 return，障碍清除后算法再也收不到任何点云，
+    // `_latest_cloud` 停在最后一次非空帧，感知走"同一帧复用"永不更新航迹，
+    // 幽灵障碍永远存在，车停在原地不动。
     if (total == 0) {
+        QByteArray dgram;
+        dgram.reserve(kCloudHeaderBytes);
+        dgram.append('A');
+        dgram.append('S');
+        dgram.append(static_cast<char>(kCloudVersion));
+        dgram.append(static_cast<char>(0x01));   // 单分片、末片
+        appendU16(dgram, 0);                     // chunkIndex
+        appendU16(dgram, 1);                     // chunkCount = 1
+        appendU64(dgram, packet.frameId);
+        appendF32(dgram, static_cast<float>(packet.simTime));
+        appendU16(dgram, 0);                     // count = 0
+        appendU16(dgram, 0);
+        const QHostAddress dest(QHostAddress::LocalHost);
+        if (udp_->writeDatagram(dgram, dest, cfg_.udpPort) < 0) {
+            ++droppedChunks_;
+        }
         return;
     }
 

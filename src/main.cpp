@@ -137,6 +137,8 @@ int main(int argc, char** argv) {
     // 诊断用：启动后延时 N 毫秒自动加载指定场景，模拟"算法先连上、用户再点场景"的时序。
     QString autoScene;
     int autoSceneDelayMs = 0;
+    // 诊断用：启动后延时 N 毫秒清除注入的 ghost，复现"障碍停下后清除"的恢复。
+    int clearGhostsDelayMs = -1;
 
     const QStringList args = QCoreApplication::arguments();
     for (int i = 1; i < args.size(); ++i) {
@@ -163,6 +165,8 @@ int main(int argc, char** argv) {
             autoScene = args.at(++i);
         } else if (a == QLatin1String("--auto-scene-delay") && i + 1 < args.size()) {
             autoSceneDelayMs = std::max(0, args.at(++i).toInt());
+        } else if (a == QLatin1String("--clear-after") && i + 1 < args.size()) {
+            clearGhostsDelayMs = std::max(0, args.at(++i).toInt());
         } else if (!a.startsWith(QLatin1String("--"))) {
             scenarioPath = a;
         }
@@ -185,6 +189,13 @@ int main(int argc, char** argv) {
         QTimer::singleShot(autoSceneDelayMs, &window, [&window, autoScene]() {
             window.loadScenarioFile(autoScene);
             window.startSimulation();
+        });
+    }
+
+    if (clearGhostsDelayMs >= 0) {
+        // 延时清除注入的 ghost：复现"障碍停下后清除障碍"的恢复路径。
+        QTimer::singleShot(clearGhostsDelayMs, &window, [&sim]() {
+            sim.clearGhosts();
         });
     }
 
