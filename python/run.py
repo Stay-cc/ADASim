@@ -221,9 +221,10 @@ def self_test() -> bool:
     lead_slow = Track(id=1, x=18.0, y=-1.75, theta=0.0, vx=4.2, vy=0.0,
                       length=4.5, width=1.9, hits=9)
     planner_lc.plan(ego_lc, [lead_slow], 0.02, lane_count=2, lane_width=3.5,
-                    sim_time=0.0)
+                    sim_time=0.0, lane_change_enabled=True)
     plan_lc = planner_lc.plan(ego_lc, [lead_slow], 0.02, lane_count=2,
-                              lane_width=3.5, sim_time=2.0)
+                              lane_width=3.5, sim_time=2.0,
+                              lane_change_enabled=True)
     check("变道避障", plan_lc.target_lane == 1,
           f"目标车道={plan_lc.target_lane} reason={plan_lc.reason}")
 

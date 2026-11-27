@@ -76,6 +76,8 @@ class StateFrame:
     # 道路车道数与车道宽，变道避障据此判断邻道是否存在及邻道中心位置。
     lane_count: int = 2
     lane_width: float = 3.5
+    # 是否允许自车变道避障（由场景下发）。false 时即使前车慢/近也不变道。
+    lane_change_enabled: bool = False
     ack_seq: int = -1
 
 
@@ -150,6 +152,7 @@ def parse_state(payload: bytes) -> StateFrame | None:
         target_lateral = float(obj.get("targetLateral", 0.0))
         lane_count = int(obj.get("laneCount", 2))
         lane_width = float(obj.get("laneWidth", 3.5))
+        lane_change_enabled = bool(obj.get("laneChangeEnabled", False))
         ack_seq = int(obj.get("ackSeq", -1))
     except (TypeError, ValueError):
         return None
@@ -170,6 +173,7 @@ def parse_state(payload: bytes) -> StateFrame | None:
                       road_segments=road_segments, odometer=odometer,
                       target_lateral=target_lateral,
                       lane_count=lane_count, lane_width=lane_width,
+                      lane_change_enabled=lane_change_enabled,
                       ack_seq=ack_seq)
 
 

@@ -41,5 +41,6 @@
     "x": 0,
     "y": 1.75,
     "theta": 0
-  }
+  },
+  "laneChangeEnabled": true
 }

@@ -260,6 +260,8 @@ domain::WorldState ScenarioService::buildInitialState(const domain::ScenarioTemp
     // 车道几何跟着状态走，渲染层才能画出路面。
     state.laneCount = tmpl.laneCount;
     state.laneWidth = tmpl.laneWidth;
+    // 变道避障开关随状态下发：算法据此决定要不要启用变道逻辑。
+    state.laneChangeEnabled = tmpl.laneChangeEnabled;
 
     std::uint32_t id = 1;
     for (const auto& actor : tmpl.actors) {

@@ -98,7 +98,6 @@ class PlanningConfig:
     lane_change_lookahead: float = 40.0    # 检查邻道前方多远无车，m
     lane_change_lookback: float = 15.0     # 检查邻道后方多远无车，m
     lane_change_cooldown: float = 3.0      # 一次变道后的冷却时长，s；避免来回切换
-    lane_change_align: float = 1.0         # 变道过程中，横向误差小于此值视为"已到新车道"，m
     lane_change_confirm: float = 1.0       # 连续观察到慢车/近车这么久才变道，s；抑制单帧冲动
     lane_change_lateral_rate: float = 1.2  # 变道时目标车道中心的最大横向移动速率，m/s
                                            # 平滑变道轨迹的关键：目标不阶跃，而是一步步逼近，
@@ -166,8 +165,13 @@ class Planner:
              target_lateral: float = 0.0,
              lane_count: int = 2,
              lane_width: float = 3.5,
-             sim_time: float = 0.0) -> Plan:
+             sim_time: float = 0.0,
+             lane_change_enabled: bool = False) -> Plan:
         cfg = self.cfg
+
+        # 场景级开关优先于全局配置：cfg.lane_change_enabled 是算法默认，
+        # 场景下发的 lane_change_enabled 决定这个场景到底让不让变道。
+        lane_change_ok = cfg.lane_change_enabled and lane_change_enabled
 
         # ---- 车道几何 ----
         # 车道中心序列：i ∈ [0, laneCount)，中心 y = -half + (i+0.5)*laneW。
@@ -193,7 +197,7 @@ class Planner:
         # 再加确认迟滞：连续观察到"需变道"超过 lane_change_confirm 秒才动手，
         # 抑制单帧感知抖动或刚起步时的冲动变道。
         want_change = False
-        if cfg.lane_change_enabled and lead is not None:
+        if lane_change_ok and lead is not None:
             too_close = gap < cfg.lane_change_gap
             too_slow = lead_speed < ego.speed - 0.5   # 前车明显慢于我
             cooled = (sim_time - self._last_change_time) >= cfg.lane_change_cooldown
@@ -225,10 +229,11 @@ class Planner:
             self._lateral += step if target_center > self._lateral else -step
         lateral = self._lateral
 
-        # 变道状态：对齐到目标车道中心后结束。用显式 _changing 标志而非
-        # "位置离目标车道远"判断——后者会把"初始不在车道中心"的静态偏差也
-        # 误判成变道中。
-        if self._changing and abs(ego.y - lateral) <= cfg.lane_change_align:
+        # 变道状态：当平滑目标 _lateral 已走完到 target_center（即整个变道
+        # 轨迹推进完毕）时结束。不能用 "ego.y 离 lateral 近" 判断——变道刚
+        # 触发时 _lateral 还停在旧车道中心，与 ego.y 几乎相等，会立即误判成
+        # "已对齐"而把 _changing 清零，reason 就从不出现 lane_change。
+        if self._changing and abs(self._lateral - target_center) < 1e-6:
             self._changing = False
         changing = self._changing
 

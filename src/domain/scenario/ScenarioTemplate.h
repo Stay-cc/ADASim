@@ -80,6 +80,12 @@ struct ScenarioTemplate {
     /// 交通参与者"是防手写场景漏配的，沙盒恰恰要从零开始，所以按这个标志放行。
     /// 但不可放宽为无条件允许空 actors：那样普通场景写漏 actors 就查不出来了。
     bool openWorld{false};
+
+    /// 是否允许自车变道避障。默认 false（保守）：绝大多数教学/实验场景要考
+    /// 某个具体行为（跟驰、切入减速、制动），自车若因"前车慢"就变道，会把这些
+    /// 场景的语义破坏掉。只有明确要测"避障/超车"的场景（静止故障车、沙盒、
+    /// 多行为回溯）才显式置 true。
+    bool laneChangeEnabled{false};
 };
 
 }  // namespace adasim::domain

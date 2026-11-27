@@ -90,6 +90,7 @@ std::optional<domain::ScenarioTemplate> JsonScenarioRepository::load(const std::
         tmpl.egoPose.theta = num(e, "theta", 0.0);
     }
     tmpl.openWorld = root.value(QStringLiteral("openWorld")).toBool(false);
+    tmpl.laneChangeEnabled = root.value(QStringLiteral("laneChangeEnabled")).toBool(false);
 
     // 分段道路（超大地图）。数组元素为 { startS, endS, curvature, laneCount, laneWidth }，
     // 必须按 startS 升序且连续拼接；为空则沿用单曲率字段。
@@ -188,6 +189,9 @@ bool JsonScenarioRepository::save(const std::string& path,
     root.insert(QStringLiteral("egoSpeed"), tmpl.egoSpeed);
     if (tmpl.openWorld) {
         root.insert(QStringLiteral("openWorld"), true);
+    }
+    if (tmpl.laneChangeEnabled) {
+        root.insert(QStringLiteral("laneChangeEnabled"), true);
     }
 
     QJsonObject sensor;

@@ -267,7 +267,7 @@ class AlgoNode:
                                  state.road_segments, state.odometer,
                                  state.target_lateral,
                                  state.lane_count, state.lane_width,
-                                 state.sim_time)
+                                 state.sim_time, state.lane_change_enabled)
         self.last_plan = plan
         self.last_track_count = len(tracks)
 

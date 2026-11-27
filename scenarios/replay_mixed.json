@@ -45,7 +45,18 @@
     }
   ],
   "parameters": [
-    { "name": "ego_speed", "min": 7.0, "max": 14.0, "step": 0.5 },
-    { "name": "cut_in_trigger", "min": 2.0, "max": 8.0, "step": 0.5 }
-  ]
+    {
+      "name": "ego_speed",
+      "min": 7.0,
+      "max": 14.0,
+      "step": 0.5
+    },
+    {
+      "name": "cut_in_trigger",
+      "min": 2.0,
+      "max": 8.0,
+      "step": 0.5
+    }
+  ],
+  "laneChangeEnabled": true
 }

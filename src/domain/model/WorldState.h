@@ -61,6 +61,9 @@ struct WorldState {
     /// 看不出车跑在路上、也看不出切入是从哪条道切过来的。
     int laneCount{2};
     double laneWidth{3.5};
+    /// 是否允许自车变道避障。随场景下发，算法据此决定要不要启用变道逻辑。
+    /// 与 curvature/friction 同类：都是"这一帧的场景语义"，随快照一起回退。
+    bool laneChangeEnabled{false};
     std::vector<EntityState> obstacles;
     /// 运行时注入的虚拟目标（沙盒模式右键点出来那些）。
     ///

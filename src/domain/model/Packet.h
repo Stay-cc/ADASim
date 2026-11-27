@@ -40,6 +40,8 @@ struct StatePacket {
     /// 覆盖，但为简单起见统一用顶层值（底座已按当前段写回 state）。
     int laneCount{2};
     double laneWidth{3.5};
+    /// 是否允许自车变道避障。随场景下发，算法据此决定是否启用变道逻辑。
+    bool laneChangeEnabled{false};
     std::vector<EntityState> obstacles;
 };
 
